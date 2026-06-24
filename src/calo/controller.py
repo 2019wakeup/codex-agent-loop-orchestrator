@@ -36,13 +36,13 @@ class LoopController:
             (contract.repo_path / "target_app.py").write_text("SCORE = 0.50\n\n\ndef score():\n    return SCORE\n", encoding="utf-8")
         git.commit("initial target app")
         state = LoopState(loop_id=contract.loop_id, status=LoopStatus.READY)
-        self.store.save_state(state)
+        self.store.save_state(state, contract)
         self.store.add_event(contract.loop_id, "loop.created", {"contract_path": str(contract.artifact_root / "contract.json")})
         write_json(contract.artifact_root / "state.json", state)
         return state
 
-    def load_contract(self, loop_id: str, repo_path: Path) -> LoopContract:
-        return LoopContract.model_validate(read_json(repo_path / ".codex" / "agent-loop" / loop_id / "contract.json"))
+    def load_contract(self, loop_id: str) -> LoopContract:
+        return self.store.load_contract(loop_id)
 
     def run_until_done(self, contract: LoopContract) -> LoopState:
         state = self.store.load_state(contract.loop_id)
@@ -164,7 +164,7 @@ class LoopController:
         write_text(contract.artifact_root / "reports" / "final_report.md", report)
 
     def _save(self, contract: LoopContract, state: LoopState, event_type: str, payload: dict) -> None:
-        self.store.save_state(state)
+        self.store.save_state(state, contract)
         write_json(contract.artifact_root / "state.json", state)
         self.store.add_event(contract.loop_id, event_type, payload)
 

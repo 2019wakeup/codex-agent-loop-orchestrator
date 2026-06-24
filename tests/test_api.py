@@ -33,3 +33,7 @@ def test_api_create_start_and_get_events(tmp_path: Path) -> None:
     events = [event["event_type"] for event in events_response.json()]
     assert "loop.created" in events
     assert "run.completed" in events
+
+    list_response = client.get("/api/v1/loops")
+    assert list_response.status_code == 200
+    assert list_response.json()[0]["loop_id"] == "api_loop"

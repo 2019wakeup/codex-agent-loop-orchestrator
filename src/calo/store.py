@@ -5,6 +5,7 @@ import sqlite3
 from pathlib import Path
 from typing import Any
 
+from .models import LoopContract
 from .models import LoopState, utc_now
 
 
@@ -26,6 +27,7 @@ class StateStore:
                 create table if not exists loops (
                   loop_id text primary key,
                   state_json text not null,
+                  contract_json text,
                   updated_at text not null
                 );
                 create table if not exists events (
@@ -37,21 +39,41 @@ class StateStore:
                 );
                 """
             )
+            cols = {
+                row["name"]
+                for row in con.execute("pragma table_info(loops)").fetchall()
+            }
+            if "contract_json" not in cols:
+                con.execute("alter table loops add column contract_json text")
 
-    def save_state(self, state: LoopState) -> None:
+    def save_state(self, state: LoopState, contract: LoopContract | None = None) -> None:
         state.updated_at = utc_now()
         payload = state.model_dump_json()
+        contract_payload = contract.model_dump_json() if contract else None
         with self._connect() as con:
-            con.execute(
-                """
-                insert into loops(loop_id, state_json, updated_at)
-                values (?, ?, ?)
-                on conflict(loop_id) do update set
-                  state_json=excluded.state_json,
-                  updated_at=excluded.updated_at
-                """,
-                (state.loop_id, payload, state.updated_at),
-            )
+            if contract_payload is None:
+                con.execute(
+                    """
+                    insert into loops(loop_id, state_json, updated_at)
+                    values (?, ?, ?)
+                    on conflict(loop_id) do update set
+                      state_json=excluded.state_json,
+                      updated_at=excluded.updated_at
+                    """,
+                    (state.loop_id, payload, state.updated_at),
+                )
+            else:
+                con.execute(
+                    """
+                    insert into loops(loop_id, state_json, contract_json, updated_at)
+                    values (?, ?, ?, ?)
+                    on conflict(loop_id) do update set
+                      state_json=excluded.state_json,
+                      contract_json=excluded.contract_json,
+                      updated_at=excluded.updated_at
+                    """,
+                    (state.loop_id, payload, contract_payload, state.updated_at),
+                )
 
     def load_state(self, loop_id: str) -> LoopState:
         with self._connect() as con:
@@ -59,6 +81,18 @@ class StateStore:
         if row is None:
             raise KeyError(f"unknown loop: {loop_id}")
         return LoopState.model_validate_json(row["state_json"])
+
+    def load_contract(self, loop_id: str) -> LoopContract:
+        with self._connect() as con:
+            row = con.execute("select contract_json from loops where loop_id = ?", (loop_id,)).fetchone()
+        if row is None or row["contract_json"] is None:
+            raise KeyError(f"unknown loop contract: {loop_id}")
+        return LoopContract.model_validate_json(row["contract_json"])
+
+    def list_loops(self) -> list[LoopState]:
+        with self._connect() as con:
+            rows = con.execute("select state_json from loops order by updated_at desc").fetchall()
+        return [LoopState.model_validate_json(row["state_json"]) for row in rows]
 
     def add_event(self, loop_id: str, event_type: str, payload: dict[str, Any]) -> None:
         with self._connect() as con:

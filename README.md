@@ -22,6 +22,17 @@ calo demo --workspace /tmp/calo-demo-workspace --target 0.70 --max-turns 3
 
 The default MVP uses a deterministic local Codex runner stub so the full loop can be tested without API credentials. A real Codex SDK adapter can be wired behind the same `CodexRunner` interface.
 
+## CLI Workflow
+
+```bash
+calo create --config examples/loop_contract.json --workspace /tmp/calo-example-loop
+calo start example_loop --workspace /tmp/calo-example-loop
+calo status example_loop --workspace /tmp/calo-example-loop
+calo events example_loop --workspace /tmp/calo-example-loop
+```
+
+`workspace` stores the orchestrator SQLite DB at `.calo/state.sqlite3`. The target repo path is read from the loop contract and may be the same directory.
+
 ## Core Artifacts
 
 Each loop writes artifacts under:

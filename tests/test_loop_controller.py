@@ -68,3 +68,18 @@ def test_events_capture_planner_worker_judge_policy(tmp_path: Path) -> None:
     assert "codex.judge.completed" in event_types
     assert "policy.checked" in event_types
     assert "run.completed" in event_types
+
+
+def test_contract_persists_for_resume(tmp_path: Path) -> None:
+    contract = make_contract(tmp_path, target=0.6, max_turns=2)
+    db_path = tmp_path / "state.sqlite3"
+    controller = LoopController(StateStore(db_path))
+
+    controller.create_loop(contract)
+    resumed = LoopController(StateStore(db_path))
+    loaded = resumed.load_contract(contract.loop_id)
+    state = resumed.run_until_done(loaded)
+
+    assert loaded.loop_id == contract.loop_id
+    assert loaded.repo_path == contract.repo_path
+    assert state.status == LoopStatus.COMPLETED

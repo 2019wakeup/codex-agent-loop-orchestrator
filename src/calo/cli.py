@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import typer
@@ -13,6 +14,10 @@ app = typer.Typer(help="Codex Agent Loop Orchestrator MVP")
 
 def _controller(workspace: Path) -> LoopController:
     return LoopController(StateStore(workspace / ".calo" / "state.sqlite3"))
+
+
+def _store(workspace: Path) -> StateStore:
+    return StateStore(workspace / ".calo" / "state.sqlite3")
 
 
 @app.command()
@@ -50,6 +55,53 @@ def init(
     contract = LoopContract(loop_id=loop_id, objective=objective, repo_path=workspace, target_value=target)
     state = _controller(workspace).create_loop(contract)
     typer.echo(f"created {contract.loop_id} status={state.status}")
+
+
+@app.command()
+def create(
+    config: Path = typer.Option(..., help="JSON loop contract file."),
+    workspace: Path | None = typer.Option(None, help="State workspace. Defaults to contract repo_path."),
+) -> None:
+    contract = LoopContract.model_validate_json(config.read_text(encoding="utf-8"))
+    state_workspace = workspace or contract.repo_path
+    state = _controller(state_workspace).create_loop(contract)
+    typer.echo(f"created {contract.loop_id} status={state.status} db={state_workspace / '.calo' / 'state.sqlite3'}")
+
+
+@app.command()
+def start(
+    loop_id: str = typer.Argument(...),
+    workspace: Path = typer.Option(..., help="State workspace used when the loop was created."),
+) -> None:
+    controller = _controller(workspace)
+    contract = controller.load_contract(loop_id)
+    state = controller.run_until_done(contract)
+    typer.echo(state.model_dump_json(indent=2))
+
+
+@app.command()
+def status(
+    loop_id: str = typer.Argument(...),
+    workspace: Path = typer.Option(..., help="State workspace used when the loop was created."),
+) -> None:
+    state = _store(workspace).load_state(loop_id)
+    typer.echo(state.model_dump_json(indent=2))
+
+
+@app.command()
+def events(
+    loop_id: str = typer.Argument(...),
+    workspace: Path = typer.Option(..., help="State workspace used when the loop was created."),
+) -> None:
+    typer.echo(json.dumps(_store(workspace).list_events(loop_id), indent=2, ensure_ascii=False))
+
+
+@app.command("list")
+def list_loops(
+    workspace: Path = typer.Option(..., help="State workspace."),
+) -> None:
+    for state in _store(workspace).list_loops():
+        typer.echo(f"{state.loop_id}\t{state.status}\tturn={state.turn}\tbest={state.best_metric}")
 
 
 if __name__ == "__main__":

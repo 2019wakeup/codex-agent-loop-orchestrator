@@ -1,0 +1,22 @@
+{
+  "loop_id": "example_loop",
+  "objective": "Raise fake score to 0.70",
+  "repo_path": "/tmp/calo-example-loop",
+  "target_metric": "score",
+  "target_value": 0.7,
+  "branch": "agent-loop/main",
+  "iteration_limits": {
+    "max_turns": 3,
+    "patience": 3,
+    "min_delta": 0.001
+  },
+  "commands": {
+    "validation": "python -m py_compile target_app.py",
+    "train": "python fake_train.py --callback-file {callback_file} --run-id {run_id} --turn-id {turn_id}"
+  },
+  "human_gate": {
+    "diff_review": false,
+    "destructive_actions": true,
+    "auto_commit": true
+  }
+}
