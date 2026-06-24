@@ -37,6 +37,13 @@ class StateStore:
                   payload_json text not null,
                   created_at text not null
                 );
+                create table if not exists processed_callbacks (
+                  loop_id text not null,
+                  run_id text not null,
+                  payload_json text not null,
+                  created_at text not null,
+                  primary key(loop_id, run_id)
+                );
                 """
             )
             cols = {
@@ -100,6 +107,28 @@ class StateStore:
                 "insert into events(loop_id, event_type, payload_json, created_at) values (?, ?, ?, ?)",
                 (loop_id, event_type, json.dumps(payload, ensure_ascii=False), utc_now()),
             )
+
+    def claim_callback(self, loop_id: str, run_id: str, payload: dict[str, Any]) -> bool:
+        try:
+            with self._connect() as con:
+                con.execute(
+                    """
+                    insert into processed_callbacks(loop_id, run_id, payload_json, created_at)
+                    values (?, ?, ?, ?)
+                    """,
+                    (loop_id, run_id, json.dumps(payload, ensure_ascii=False), utc_now()),
+                )
+            return True
+        except sqlite3.IntegrityError:
+            return False
+
+    def has_callback(self, loop_id: str, run_id: str) -> bool:
+        with self._connect() as con:
+            row = con.execute(
+                "select 1 from processed_callbacks where loop_id = ? and run_id = ?",
+                (loop_id, run_id),
+            ).fetchone()
+        return row is not None
 
     def list_events(self, loop_id: str) -> list[dict[str, Any]]:
         with self._connect() as con:

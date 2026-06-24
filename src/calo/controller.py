@@ -107,11 +107,32 @@ class LoopController:
         run_id = f"run_{state.turn:04d}"
         state.last_run_id = run_id
         self._save(contract, state, "run.started", {"turn_id": turn_id, "run_id": run_id})
+        if contract.execution_mode == "async":
+            manifest_path = self.task_runner.launch_training_async(contract, turn_id, run_id)
+            state.status = LoopStatus.WAITING_CALLBACK
+            self._save(
+                contract,
+                state,
+                "run.launched_async",
+                {"turn_id": turn_id, "run_id": run_id, "manifest_path": str(manifest_path)},
+            )
+            return state
         callback = self.task_runner.run_training_sync(contract, turn_id, run_id)
+        return self.handle_callback(contract, callback)
+
+    def collect_callback_file(self, contract: LoopContract, run_id: str | None = None) -> LoopState:
+        state = self.store.load_state(contract.loop_id)
+        target_run_id = run_id or state.last_run_id
+        if target_run_id is None:
+            raise ValueError("no run_id available for callback collection")
+        callback = self.task_runner.read_callback_file(contract, target_run_id)
         return self.handle_callback(contract, callback)
 
     def handle_callback(self, contract: LoopContract, callback: CallbackPayload) -> LoopState:
         state = self.store.load_state(contract.loop_id)
+        if not self.store.claim_callback(contract.loop_id, callback.run_id, callback.model_dump(mode="json")):
+            self.store.add_event(contract.loop_id, "run.callback.duplicate", {"run_id": callback.run_id})
+            return state
         metric = callback.metrics.get(contract.target_metric)
         if metric is not None:
             if state.best_metric is None or metric > state.best_metric + contract.iteration_limits.min_delta:

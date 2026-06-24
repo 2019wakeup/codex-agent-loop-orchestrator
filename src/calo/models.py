@@ -63,6 +63,11 @@ class HumanGate(BaseModel):
     auto_commit: bool = True
 
 
+class WebhookSecurity(BaseModel):
+    secret: str | None = None
+    timestamp_tolerance_seconds: int = 300
+
+
 class LoopContract(BaseModel):
     loop_id: str
     objective: str
@@ -70,9 +75,11 @@ class LoopContract(BaseModel):
     target_metric: str = "score"
     target_value: float = 0.8
     branch: str = "agent-loop/main"
+    execution_mode: Literal["sync", "async"] = "sync"
     iteration_limits: IterationLimits = Field(default_factory=IterationLimits)
     commands: Commands = Field(default_factory=Commands)
     human_gate: HumanGate = Field(default_factory=HumanGate)
+    webhook: WebhookSecurity = Field(default_factory=WebhookSecurity)
     created_at: str = Field(default_factory=utc_now)
 
     @property

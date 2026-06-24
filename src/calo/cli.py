@@ -96,6 +96,33 @@ def start(
     typer.echo(state.model_dump_json(indent=2))
 
 
+@app.command("step")
+def step(
+    loop_id: str = typer.Argument(...),
+    workspace: Path = typer.Option(..., help="State workspace used when the loop was created."),
+    runner: str = typer.Option("local", help="Runner backend: local or codex-cli."),
+    model: str | None = typer.Option(None, help="Model for codex-cli runner."),
+) -> None:
+    controller = _controller(workspace, runner, model)
+    contract = controller.load_contract(loop_id)
+    state = controller.run_one_turn(contract)
+    typer.echo(state.model_dump_json(indent=2))
+
+
+@app.command("collect-callback")
+def collect_callback(
+    loop_id: str = typer.Argument(...),
+    workspace: Path = typer.Option(..., help="State workspace used when the loop was created."),
+    run_id: str | None = typer.Option(None, help="Run id to collect. Defaults to last run."),
+    runner: str = typer.Option("local", help="Runner backend: local or codex-cli."),
+    model: str | None = typer.Option(None, help="Model for codex-cli runner."),
+) -> None:
+    controller = _controller(workspace, runner, model)
+    contract = controller.load_contract(loop_id)
+    state = controller.collect_callback_file(contract, run_id)
+    typer.echo(state.model_dump_json(indent=2))
+
+
 @app.command()
 def status(
     loop_id: str = typer.Argument(...),

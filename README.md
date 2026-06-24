@@ -38,6 +38,26 @@ Runner backends:
 - `--runner local`: deterministic offline runner used by tests and demos.
 - `--runner codex-cli`: invokes `codex exec` for Planner, Worker, and Judge turns.
 
+## Async Callback Workflow
+
+Use `execution_mode: "async"` in the contract to launch training as a background process and stop the orchestrator at `waiting_callback`.
+
+```bash
+calo create --config examples/async_loop_contract.json --workspace /tmp/calo-async-example-loop
+calo step async_example_loop --workspace /tmp/calo-async-example-loop
+calo collect-callback async_example_loop --workspace /tmp/calo-async-example-loop
+```
+
+The callback path is idempotent by `(loop_id, run_id)`. API callbacks can be protected with `webhook.secret`, which requires `X-Agent-Loop-Timestamp` and `X-Agent-Loop-Signature` headers.
+
+Signature format:
+
+```text
+X-Agent-Loop-Signature = sha256=<hmac_sha256(secret, timestamp + "." + raw_body)>
+```
+
+The timestamp is Unix seconds and is checked against `webhook.timestamp_tolerance_seconds`.
+
 ## Core Artifacts
 
 Each loop writes artifacts under:
@@ -56,6 +76,14 @@ Important files:
 - `evidence/turn_<n>.json`
 - `reports/final_report.md`
 
+## Acceptance
+
+```bash
+pytest -q
+bash scripts/acceptance_demo.sh /tmp/calo-sync-acceptance
+bash scripts/async_acceptance_demo.sh /tmp/calo-async-acceptance
+```
+
 ## Development Status
 
-This repo is intentionally MVP-sized: a synchronous local controller, SQLite state store, CLI, FastAPI app factory, fake training command, and tests that prove the planner/worker/judge/policy loop works end to end.
+This repo is intentionally MVP-sized but runnable: it includes sync and async execution modes, SQLite state, idempotent signed callbacks, CLI workflows, a FastAPI app factory, fake training commands, and tests that prove the planner/worker/judge/policy loop works end to end.

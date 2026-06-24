@@ -49,6 +49,38 @@ class TaskRunner:
         write_json(contract.artifact_root / "runs" / f"{run_id}.json", payload)
         return payload
 
+    def launch_training_async(self, contract: LoopContract, turn_id: str, run_id: str) -> Path:
+        callback_file = contract.artifact_root / "runs" / f"{run_id}_callback.json"
+        stdout_file = contract.artifact_root / "runs" / f"{run_id}.log"
+        callback_file.parent.mkdir(parents=True, exist_ok=True)
+        command = contract.commands.train.format(callback_file=callback_file, run_id=run_id, turn_id=turn_id)
+        out = stdout_file.open("w", encoding="utf-8")
+        process = subprocess.Popen(
+            command,
+            cwd=contract.repo_path,
+            shell=True,
+            text=True,
+            stdout=out,
+            stderr=subprocess.STDOUT,
+        )
+        manifest = {
+            "loop_id": contract.loop_id,
+            "run_id": run_id,
+            "turn_id": turn_id,
+            "pid": process.pid,
+            "command": command,
+            "callback_file": str(callback_file),
+            "stdout_file": str(stdout_file),
+            "status": "running",
+        }
+        manifest_path = contract.artifact_root / "runs" / f"{run_id}_manifest.json"
+        write_json(manifest_path, manifest)
+        return manifest_path
+
+    def read_callback_file(self, contract: LoopContract, run_id: str) -> CallbackPayload:
+        callback_file = contract.artifact_root / "runs" / f"{run_id}_callback.json"
+        return CallbackPayload.model_validate_json(callback_file.read_text(encoding="utf-8"))
+
 
 def write_fake_training_script(repo_path: Path) -> None:
     script = repo_path / "fake_train.py"
