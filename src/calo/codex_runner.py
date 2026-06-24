@@ -8,6 +8,8 @@ from typing import Any, Protocol
 from .artifacts import read_json, write_json, write_text
 from .models import JudgeReport, Plan, PlannerTask, WorkerSummary
 
+LOOP_CONTROL_BOUNDARY = "Do not create, start, pause, resume, cancel, or recursively orchestrate loops."
+
 
 class CodexRunner(Protocol):
     def planner(self, artifact_root: Path, turn_id: str, evidence: dict[str, Any]) -> Plan: ...
@@ -152,6 +154,8 @@ The JSON must match this shape:
 }}
 
 Do not edit source files. Do not start training.
+{LOOP_CONTROL_BOUNDARY}
+The Orchestrator owns all lifecycle transitions.
 """
         self._exec(artifact_root.parents[2], prompt, artifact_root / "plan" / f"{turn_id}_last_message.txt")
         return Plan.model_validate(read_json(plan_json))
@@ -183,6 +187,8 @@ The worker summary JSON must include:
 }}
 
 Do not run long training. Do not delete data or perform destructive recovery.
+{LOOP_CONTROL_BOUNDARY}
+Only modify repository files needed by the provided plan.
 """
         self._exec(repo_path, prompt, artifact_root / "worker" / f"{plan.turn_id}_last_message.txt")
         return WorkerSummary.model_validate(read_json(summary_path))
@@ -217,6 +223,8 @@ The JSON must match this shape:
 }}
 
 Do not edit source files. Do not start training. Your verdict is advisory.
+{LOOP_CONTROL_BOUNDARY}
+The Policy Engine is the only component allowed to turn your verdict into a lifecycle transition.
 """
         self._exec(artifact_root.parents[2], prompt, artifact_root / "judge" / f"{turn_id}_last_message.txt")
         return JudgeReport.model_validate(read_json(judge_json))

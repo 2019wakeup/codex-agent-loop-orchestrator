@@ -24,6 +24,8 @@ The MVP ships with `LocalDeterministicCodexRunner`, a deterministic implementati
 - Worker changes repo files and writes `handoff/turn_<n>.md`.
 - Judge writes `judge/turn_<n>.json` and `judge/turn_<n>.md`.
 - PolicyEngine alone maps model suggestions into lifecycle transitions.
+- Codex roles must not create, start, pause, resume, cancel, or recursively orchestrate loops.
+- SQLite state is authoritative. Files under `.codex/agent-loop/<loop_id>/` are audit artifacts, not lifecycle authority.
 
 ## Persistence
 

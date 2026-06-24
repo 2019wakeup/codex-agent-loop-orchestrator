@@ -10,6 +10,8 @@ The orchestrator owns the loop lifecycle. Codex-powered turns provide model inte
 
 The long-running task is external. The orchestrator launches it, records state, and consumes a callback payload without keeping a Codex turn alive.
 
+Hard boundary: Codex roles cannot create or own loops. Planner, Worker, and Judge may write their required artifacts, but lifecycle transitions are executed only by the Orchestrator and Policy Engine, with SQLite state as the authority.
+
 ## Quick Start
 
 ```bash

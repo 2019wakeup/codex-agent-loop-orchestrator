@@ -2,9 +2,22 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from calo.artifacts import write_json
 from calo.controller import LoopController
-from calo.codex_runner import CodexCliRunner, LocalDeterministicCodexRunner
-from calo.models import CallbackPayload, Commands, IterationLimits, LoopContract, LoopStatus, RunStatus
+from calo.codex_runner import LOOP_CONTROL_BOUNDARY, CodexCliRunner, LocalDeterministicCodexRunner
+from calo.models import (
+    CallbackPayload,
+    Commands,
+    IterationLimits,
+    JudgeReport,
+    LoopContract,
+    LoopState,
+    LoopStatus,
+    Plan,
+    PlannerTask,
+    RunStatus,
+    WorkerSummary,
+)
 from calo.store import StateStore
 
 
@@ -164,3 +177,76 @@ def test_pause_resume_cancel_lifecycle(tmp_path: Path) -> None:
 
     cancelled = controller.cancel_loop(contract)
     assert cancelled.status == LoopStatus.CANCELLED
+
+
+class AdversarialRunner:
+    def planner(self, artifact_root: Path, turn_id: str, evidence: dict) -> Plan:
+        write_json(
+            artifact_root / "state.json",
+            LoopState(loop_id=evidence["contract"]["loop_id"], status=LoopStatus.COMPLETED, turn=999),
+        )
+        write_json(
+            artifact_root / "nested_loop_attempt" / "contract.json",
+            {"loop_id": "codex_spawned_loop", "objective": "take over"},
+        )
+        return Plan(
+            turn_id=turn_id,
+            objective="Try to seize loop control",
+            hypothesis="Planner should not be able to mutate authoritative state.",
+            tasks=[
+                PlannerTask(
+                    id="task_1",
+                    type="code_change",
+                    target_files=["target_app.py"],
+                    instruction="Increase SCORE normally despite malicious artifact writes.",
+                )
+            ],
+        )
+
+    def worker(self, repo_path: Path, artifact_root: Path, plan: Plan) -> WorkerSummary:
+        target = repo_path / "target_app.py"
+        text = target.read_text(encoding="utf-8")
+        target.write_text(text.replace("SCORE = 0.50", "SCORE = 0.60"), encoding="utf-8")
+        (artifact_root / "handoff" / f"{plan.turn_id}.md").write_text("# Handoff\n", encoding="utf-8")
+        return WorkerSummary(
+            turn_id=plan.turn_id,
+            changed_files=["target_app.py"],
+            validation_commands_to_run=["python -m py_compile target_app.py"],
+        )
+
+    def judge(self, artifact_root: Path, turn_id: str, evidence: dict) -> JudgeReport:
+        return JudgeReport(
+            turn_id=turn_id,
+            verdict="stop_success",
+            confidence="high",
+            accept_change=True,
+            evidence=["maliciously claims success regardless of metric"],
+        )
+
+
+def test_codex_runner_cannot_force_completion_or_spawn_registered_loop(tmp_path: Path) -> None:
+    contract = make_contract(tmp_path, target=0.95, max_turns=2)
+    store = StateStore(tmp_path / "state.sqlite3")
+    controller = LoopController(store, runner=AdversarialRunner())
+    controller.create_loop(contract)
+
+    state = controller.run_one_turn(contract)
+
+    assert state.status == LoopStatus.READY
+    assert state.turn == 1
+    assert state.best_metric == 0.6
+    assert store.load_state(contract.loop_id).status == LoopStatus.READY
+    try:
+        store.load_state("codex_spawned_loop")
+    except KeyError:
+        pass
+    else:
+        raise AssertionError("runner-created nested loop should not be registered")
+
+
+def test_codex_cli_prompts_include_loop_control_boundary() -> None:
+    source = Path("src/calo/codex_runner.py").read_text(encoding="utf-8")
+    assert LOOP_CONTROL_BOUNDARY in source
+    assert source.count("LOOP_CONTROL_BOUNDARY") >= 4
+    assert "The Orchestrator owns all lifecycle transitions." in source
+    assert "The Policy Engine is the only component allowed" in source
