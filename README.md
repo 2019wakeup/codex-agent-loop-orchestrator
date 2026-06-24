@@ -21,6 +21,12 @@ Hard boundary: Codex roles cannot create or own loops, cannot instantiate real T
 
 Production Codex turns are intended to run through the Codex SDK. Skills, `codex exec`, hooks, and thread automations can inspire operational-pause behavior or serve as temporary wake/debug surfaces, but they are not the Orchestrator control plane.
 
+## Positioning
+
+**For** research engineers and automation platform builders who need to delegate cross-day coding, research, reproduction, and benchmark goals to Codex without keeping a model turn alive, **Codex Agent Loop Orchestrator** is a local orchestration service that turns broad goals into auditable task graphs, runs Codex only for planning/work/judgment, and hands long work to external owners with explicit wake paths.
+
+**Unlike** ad hoc tmux scripts, notebook notes, or long-running `codex exec` sessions, CALO keeps lifecycle authority outside the model: Planner can suggest, Worker can change files, Judge can recommend, but Orchestrator and PolicyEngine decide what actually runs.
+
 ## What You Get
 
 - Local FastAPI service with Web UI at `/ui/`
@@ -77,6 +83,27 @@ The product flow should look like this:
 10. Orchestrator decides and records the next state.
 
 The JSON contract is the durable internal control plane for this flow. It is still exposed in the current MVP and for automation, but it should not remain the main human entrypoint.
+
+## What This Replaces
+
+CALO is intended to replace brittle research automation patterns:
+
+- Leaving Codex blocked on a long Bash command.
+- Manually watching tmux logs and pasting summaries back into a chat.
+- Hand-maintaining scattered status notes in notebooks or Markdown.
+- Letting a model decide to retry, clean data, or spawn follow-up loops without a hard external policy layer.
+- Treating one training command as the whole product when the real job is a task chain: discover, select, download, adapt, run, evaluate, report.
+
+## Current Gap
+
+The current repository is a working local MVP, but not the final product experience:
+
+- It proves loop state, policy decisions, callback idempotency, sync/async demos, Git audit commits, and a local Web UI.
+- It still exposes `examples/loop_contract.json` as the main runnable entry.
+- It has a deterministic local runner and a `codex-cli` compatibility bridge.
+- It does not yet implement the default goal brief entrypoint, full TaskGraph/TaskRun models, or production Codex SDK adapter.
+
+Use the current MVP to validate the orchestration spine. Use the PRD as the source of truth for the product direction.
 
 ## 5-Minute Local Demo
 
@@ -194,6 +221,29 @@ Planned default human entrypoints:
 - `calo goal` interactive CLI: asks for a broad objective, repo, constraints, budget, and approval gates, then generates the contract.
 - Web UI create flow: goal brief first, advanced contract JSON hidden behind an inspection panel.
 - API `POST /api/v1/goals`: accepts a goal brief and creates a loop through the Planner.
+
+## Product Roadmap
+
+Now:
+
+- Keep the existing contract JSON entry stable for tests and automation.
+- Tighten the dashboard around phase, next action, owner, wake path, and readable event summaries.
+- Preserve deterministic local runner for acceptance tests.
+
+Next:
+
+- Add `calo goal` and `POST /api/v1/goals` to compile goal briefs into contracts.
+- Add TaskGraph and TaskRun persistence models.
+- Replace training-specific naming in callbacks and events with generic TaskRun language while preserving backward compatibility.
+- Implement Codex SDK Runner as the production model-backed path.
+- Add policy tests that reject recursive loop creation, unapproved TaskRun creation, over-budget tasks, and long polling.
+
+Later:
+
+- Add Web UI goal wizard and task graph view.
+- Add artifact browser and final report viewer.
+- Add scheduler integrations for tmux/systemd/Slurm/Ray/Kubernetes.
+- Add multi-loop queueing, PR integration, and team audit controls.
 
 ## Sync Workflow
 
@@ -396,7 +446,13 @@ Do not treat `codex-cli` as the final architecture. It is useful for smoke tests
 
 ## HTTP API
 
-Create a loop:
+Goal-first API target:
+
+```http
+POST /api/v1/goals
+```
+
+Current MVP advanced/API entry:
 
 ```http
 POST /api/v1/loops
@@ -421,7 +477,7 @@ GET /api/v1/dashboard
 GET /api/v1/loops/{loop_id}/summary
 ```
 
-Training callback:
+TaskRun callback:
 
 ```http
 POST /api/v1/loops/{loop_id}/runs/{run_id}/callback
@@ -462,7 +518,7 @@ bash scripts/async_acceptance_demo.sh /tmp/calo-async-acceptance
 
 The async script proves:
 
-- A loop can launch training and enter `waiting_callback`.
+- A loop can launch a background TaskRun and enter `waiting_callback`.
 - A callback can be collected later.
 - The loop can continue across turns.
 - The final state reaches `completed`.
@@ -500,7 +556,7 @@ calo serve --workspace /tmp/calo-example-loop
 
 ### Async loop stays in `waiting_callback`
 
-Check whether the training command wrote the callback file:
+Check whether the background TaskRun wrote the callback file:
 
 ```bash
 ls <repo_path>/.codex/agent-loop/<loop_id>/runs/
@@ -531,12 +587,13 @@ calo start <loop_id> --workspace <workspace> --runner local
 
 This repository is usable as a local MVP:
 
-- It can run complete sync loops.
-- It can run async callback loops.
+- It can run complete sync demo loops.
+- It can run async callback demo loops.
 - It has a local Web UI.
 - It has signed, idempotent callbacks.
 - It has tests and acceptance scripts.
 - It keeps lifecycle authority in the Orchestrator and PolicyEngine.
+- It still needs the goal brief entrypoint, generic TaskGraph/TaskRun model, and production Codex SDK Runner to match the full PRD.
 
 See also:
 
