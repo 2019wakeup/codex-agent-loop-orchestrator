@@ -33,6 +33,11 @@ calo events example_loop --workspace /tmp/calo-example-loop
 
 `workspace` stores the orchestrator SQLite DB at `.calo/state.sqlite3`. The target repo path is read from the loop contract and may be the same directory.
 
+Runner backends:
+
+- `--runner local`: deterministic offline runner used by tests and demos.
+- `--runner codex-cli`: invokes `codex exec` for Planner, Worker, and Judge turns.
+
 ## Core Artifacts
 
 Each loop writes artifacts under:

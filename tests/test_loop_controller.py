@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from calo.controller import LoopController
+from calo.codex_runner import CodexCliRunner, LocalDeterministicCodexRunner
 from calo.models import Commands, IterationLimits, LoopContract, LoopStatus
 from calo.store import StateStore
 
@@ -83,3 +84,9 @@ def test_contract_persists_for_resume(tmp_path: Path) -> None:
     assert loaded.loop_id == contract.loop_id
     assert loaded.repo_path == contract.repo_path
     assert state.status == LoopStatus.COMPLETED
+
+
+def test_codex_cli_runner_is_constructible() -> None:
+    runner = CodexCliRunner(model="test-model")
+    assert runner.model == "test-model"
+    assert isinstance(LocalDeterministicCodexRunner(), LocalDeterministicCodexRunner)

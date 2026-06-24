@@ -6,14 +6,23 @@ from pathlib import Path
 import typer
 
 from .controller import LoopController
+from .codex_runner import CodexCliRunner, LocalDeterministicCodexRunner
 from .models import Commands, IterationLimits, LoopContract
 from .store import StateStore
 
 app = typer.Typer(help="Codex Agent Loop Orchestrator MVP")
 
 
-def _controller(workspace: Path) -> LoopController:
-    return LoopController(StateStore(workspace / ".calo" / "state.sqlite3"))
+def _make_runner(kind: str, model: str | None = None):
+    if kind == "local":
+        return LocalDeterministicCodexRunner()
+    if kind == "codex-cli":
+        return CodexCliRunner(model=model)
+    raise typer.BadParameter("runner must be one of: local, codex-cli")
+
+
+def _controller(workspace: Path, runner: str = "local", model: str | None = None) -> LoopController:
+    return LoopController(StateStore(workspace / ".calo" / "state.sqlite3"), runner=_make_runner(runner, model))
 
 
 def _store(workspace: Path) -> StateStore:
@@ -25,6 +34,8 @@ def demo(
     workspace: Path = typer.Option(..., help="Workspace/repo path for the demo loop."),
     target: float = typer.Option(0.7, help="Target score."),
     max_turns: int = typer.Option(3, help="Maximum loop turns."),
+    runner: str = typer.Option("local", help="Runner backend: local or codex-cli."),
+    model: str | None = typer.Option(None, help="Model for codex-cli runner."),
 ) -> None:
     workspace.mkdir(parents=True, exist_ok=True)
     loop_id = "demo_loop"
@@ -36,7 +47,7 @@ def demo(
         iteration_limits=IterationLimits(max_turns=max_turns, patience=max_turns),
         commands=Commands(train="python fake_train.py --callback-file {callback_file} --run-id {run_id} --turn-id {turn_id}"),
     )
-    controller = _controller(workspace)
+    controller = _controller(workspace, runner, model)
     controller.create_loop(contract)
     state = controller.run_until_done(contract)
     typer.echo(f"status={state.status}")
@@ -51,9 +62,11 @@ def init(
     loop_id: str = typer.Option("loop_0001"),
     objective: str = typer.Option("Improve target metric."),
     target: float = typer.Option(0.8),
+    runner: str = typer.Option("local", help="Runner backend: local or codex-cli."),
+    model: str | None = typer.Option(None, help="Model for codex-cli runner."),
 ) -> None:
     contract = LoopContract(loop_id=loop_id, objective=objective, repo_path=workspace, target_value=target)
-    state = _controller(workspace).create_loop(contract)
+    state = _controller(workspace, runner, model).create_loop(contract)
     typer.echo(f"created {contract.loop_id} status={state.status}")
 
 
@@ -61,10 +74,12 @@ def init(
 def create(
     config: Path = typer.Option(..., help="JSON loop contract file."),
     workspace: Path | None = typer.Option(None, help="State workspace. Defaults to contract repo_path."),
+    runner: str = typer.Option("local", help="Runner backend: local or codex-cli."),
+    model: str | None = typer.Option(None, help="Model for codex-cli runner."),
 ) -> None:
     contract = LoopContract.model_validate_json(config.read_text(encoding="utf-8"))
     state_workspace = workspace or contract.repo_path
-    state = _controller(state_workspace).create_loop(contract)
+    state = _controller(state_workspace, runner, model).create_loop(contract)
     typer.echo(f"created {contract.loop_id} status={state.status} db={state_workspace / '.calo' / 'state.sqlite3'}")
 
 
@@ -72,8 +87,10 @@ def create(
 def start(
     loop_id: str = typer.Argument(...),
     workspace: Path = typer.Option(..., help="State workspace used when the loop was created."),
+    runner: str = typer.Option("local", help="Runner backend: local or codex-cli."),
+    model: str | None = typer.Option(None, help="Model for codex-cli runner."),
 ) -> None:
-    controller = _controller(workspace)
+    controller = _controller(workspace, runner, model)
     contract = controller.load_contract(loop_id)
     state = controller.run_until_done(contract)
     typer.echo(state.model_dump_json(indent=2))
