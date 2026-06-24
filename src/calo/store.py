@@ -5,7 +5,7 @@ import sqlite3
 from pathlib import Path
 from typing import Any
 
-from .models import LoopContract
+from .models import LoopContract, LoopEvent
 from .models import LoopState, utc_now
 
 
@@ -144,3 +144,26 @@ class StateStore:
             }
             for row in rows
         ]
+
+    def recent_events(self, loop_id: str, limit: int = 8) -> list[LoopEvent]:
+        with self._connect() as con:
+            rows = con.execute(
+                """
+                select event_type, payload_json, created_at
+                from events
+                where loop_id = ?
+                order by id desc
+                limit ?
+                """,
+                (loop_id, limit),
+            ).fetchall()
+        events = [
+            LoopEvent(
+                event_type=row["event_type"],
+                payload=json.loads(row["payload_json"]),
+                created_at=row["created_at"],
+            )
+            for row in rows
+        ]
+        events.reverse()
+        return events

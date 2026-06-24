@@ -49,6 +49,14 @@ Run the HTTP API:
 calo serve --workspace /tmp/calo-example-loop --host 127.0.0.1 --port 8000
 ```
 
+Then open:
+
+```text
+http://127.0.0.1:8000/ui/
+```
+
+The local Web UI tracks loop-level state: status, turn progress, target metric progress, last run, last decision, and recent events. It calls the same lifecycle endpoints as the CLI.
+
 Runner backends:
 
 - `--runner local`: deterministic offline runner used by tests and demos.

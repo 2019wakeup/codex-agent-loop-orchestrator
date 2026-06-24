@@ -160,3 +160,28 @@ class PolicyResult(BaseModel):
     should_continue: bool
     should_commit: bool = True
     should_launch_training: bool = False
+
+
+class LoopEvent(BaseModel):
+    event_type: str
+    payload: dict[str, Any]
+    created_at: str
+
+
+class LoopSummary(BaseModel):
+    loop_id: str
+    objective: str
+    status: LoopStatus
+    turn: int
+    max_turns: int
+    progress_percent: int
+    target_metric: str
+    target_value: float
+    best_metric: float | None
+    metric_percent: int | None
+    last_decision: Decision | None
+    last_run_id: str | None
+    updated_at: str
+    repo_path: str
+    execution_mode: Literal["sync", "async"]
+    recent_events: list[LoopEvent] = Field(default_factory=list)

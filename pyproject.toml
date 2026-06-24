@@ -27,6 +27,9 @@ calo = "calo.cli:app"
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools.package-data]
+calo = ["ui/*.html", "ui/*.css", "ui/*.js"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]

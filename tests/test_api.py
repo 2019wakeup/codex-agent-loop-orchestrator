@@ -40,6 +40,40 @@ def test_api_create_start_and_get_events(tmp_path: Path) -> None:
     assert list_response.status_code == 200
     assert list_response.json()[0]["loop_id"] == "api_loop"
 
+    summary_response = client.get("/api/v1/loops/api_loop/summary")
+    assert summary_response.status_code == 200
+    summary = summary_response.json()
+    assert summary["loop_id"] == "api_loop"
+    assert summary["status"] == "completed"
+    assert summary["turn"] >= 1
+    assert summary["max_turns"] == 2
+    assert summary["progress_percent"] >= 50
+    assert summary["target_metric"] == "score"
+    assert summary["metric_percent"] == 100
+    assert summary["recent_events"]
+
+    dashboard_response = client.get("/api/v1/dashboard")
+    assert dashboard_response.status_code == 200
+    assert dashboard_response.json()[0]["loop_id"] == "api_loop"
+
+
+def test_web_ui_static_routes(tmp_path: Path) -> None:
+    app = create_app(tmp_path / "api.sqlite3")
+    client = TestClient(app)
+
+    root = client.get("/", follow_redirects=False)
+    assert root.status_code in {307, 308}
+    assert root.headers["location"] == "/ui/"
+
+    html = client.get("/ui/")
+    assert html.status_code == 200
+    assert "Codex Agent Loop Orchestrator" in html.text
+    assert "/api/v1/dashboard" in client.get("/ui/app.js").text
+
+    css = client.get("/ui/styles.css")
+    assert css.status_code == 200
+    assert ".loop-row" in css.text
+
 
 def test_api_callback_signature_validation(tmp_path: Path) -> None:
     app = create_app(tmp_path / "api.sqlite3")

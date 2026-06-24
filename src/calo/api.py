@@ -3,8 +3,11 @@ from __future__ import annotations
 from pathlib import Path
 
 from fastapi import FastAPI, Header, Request
+from fastapi.responses import RedirectResponse
+from fastapi.staticfiles import StaticFiles
 
 from .controller import LoopController
+from .dashboard import build_loop_summary, list_loop_summaries
 from .models import CallbackPayload, LoopContract
 from .security import verify_signature
 from .store import StateStore
@@ -14,6 +17,12 @@ def create_app(db_path: Path | None = None) -> FastAPI:
     app = FastAPI(title="Codex Agent Loop Orchestrator")
     store = StateStore(db_path or Path(".calo/state.sqlite3"))
     controller = LoopController(store)
+    ui_dir = Path(__file__).parent / "ui"
+    app.mount("/ui", StaticFiles(directory=ui_dir, html=True), name="ui")
+
+    @app.get("/", include_in_schema=False)
+    def root():
+        return RedirectResponse(url="/ui/")
 
     @app.post("/api/v1/loops")
     def create_loop(contract: LoopContract):
@@ -46,6 +55,16 @@ def create_app(db_path: Path | None = None) -> FastAPI:
     @app.get("/api/v1/loops")
     def list_loops():
         return store.list_loops()
+
+    @app.get("/api/v1/dashboard")
+    def dashboard():
+        return list_loop_summaries(store)
+
+    @app.get("/api/v1/loops/{loop_id}/summary")
+    def loop_summary(loop_id: str):
+        state = store.load_state(loop_id)
+        contract = store.load_contract(loop_id)
+        return build_loop_summary(store, state, contract)
 
     @app.get("/api/v1/loops/{loop_id}/events")
     def get_events(loop_id: str):

@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Codex Agent Loop Orchestrator</title>
+    <link rel="stylesheet" href="/ui/styles.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div>
+        <h1>Codex Agent Loop Orchestrator</h1>
+        <p class="subtitle">Local loop operations dashboard</p>
+      </div>
+      <div class="topbar-actions">
+        <span id="health" class="health">Connecting</span>
+        <button id="refresh" class="button" type="button">Refresh</button>
+      </div>
+    </header>
+
+    <main class="layout">
+      <section class="panel loops-panel" aria-label="Loops">
+        <div class="panel-header">
+          <h2>Loops</h2>
+          <span id="loop-count" class="muted">0</span>
+        </div>
+        <div id="loops" class="loop-list"></div>
+      </section>
+
+      <section class="panel detail-panel" aria-label="Loop detail">
+        <div class="panel-header">
+          <h2 id="detail-title">Select a loop</h2>
+          <span id="detail-status" class="status neutral">No loop</span>
+        </div>
+        <div id="detail" class="detail-empty">No loop selected.</div>
+      </section>
+    </main>
+
+    <template id="loop-row-template">
+      <button class="loop-row" type="button">
+        <div class="loop-row-main">
+          <span class="loop-id"></span>
+          <span class="status"></span>
+        </div>
+        <div class="objective"></div>
+        <div class="metrics-line">
+          <span class="turns"></span>
+          <span class="metric"></span>
+          <span class="decision"></span>
+        </div>
+        <div class="bar"><span></span></div>
+      </button>
+    </template>
+
+    <script src="/ui/app.js"></script>
+  </body>
+</html>
