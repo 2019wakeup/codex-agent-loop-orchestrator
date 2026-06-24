@@ -265,6 +265,36 @@ GET /api/v1/dashboard
 GET /api/v1/loops/{loop_id}/summary
 ```
 
+## Remote GPU / AutoDL Access
+
+Some hosted GPU machines do not expose public HTTP/HTTPS ports. In that case, bind the service to localhost on the remote machine and access it through an SSH tunnel from your laptop.
+
+On the remote machine, start CALO on port `6006`:
+
+```bash
+calo serve --workspace /tmp/calo-example-loop --host 127.0.0.1 --port 6006
+```
+
+On your local machine, open PowerShell on Windows or Terminal on macOS/Linux, then create the tunnel:
+
+```bash
+ssh -CNg -L 6006:127.0.0.1:6006 root@connect.nmb2.seetacloud.com -p 20751
+```
+
+If SSH asks `yes/no`, answer `yes`. Enter the machine password when prompted. The terminal usually shows no output after a successful connection.
+
+Then open this URL locally:
+
+```text
+http://127.0.0.1:6006/ui/
+```
+
+Notes:
+
+- Do not commit machine passwords or temporary access credentials.
+- If the local port is already in use, change both local sides consistently, for example `-L 16006:127.0.0.1:6006`, then open `http://127.0.0.1:16006/ui/`.
+- If you see `Permission denied`, re-enter the password manually; some terminals handle pasted passwords poorly.
+
 ## CLI Reference
 
 ```bash
