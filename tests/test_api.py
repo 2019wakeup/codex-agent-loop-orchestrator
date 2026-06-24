@@ -68,11 +68,18 @@ def test_web_ui_static_routes(tmp_path: Path) -> None:
     html = client.get("/ui/")
     assert html.status_code == 200
     assert "Codex Agent Loop Orchestrator" in html.text
-    assert "/api/v1/dashboard" in client.get("/ui/app.js").text
+    assert "Watch Codex improvement loops" in html.text
+
+    app_js = client.get("/ui/app.js").text
+    assert "/api/v1/dashboard" in app_js
+    assert "describeEvent" in app_js
+    assert "Loop timeline" in app_js
+    assert "JSON.stringify" not in app_js
 
     css = client.get("/ui/styles.css")
     assert css.status_code == 200
     assert ".loop-row" in css.text
+    assert ".phase-panel" in css.text
 
 
 def test_api_callback_signature_validation(tmp_path: Path) -> None:

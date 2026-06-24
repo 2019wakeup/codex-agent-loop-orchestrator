@@ -243,13 +243,14 @@ http://127.0.0.1:8000/ui/
 The dashboard tracks:
 
 - Loop status
+- Current phase and next expected action
 - Current turn and max turns
 - Turn progress
 - Best metric and target value
 - Metric progress
 - Last run ID
 - Last decision
-- Recent event timeline
+- Human-readable loop timeline with expandable details
 
 Buttons call the same backend lifecycle endpoints as the CLI:
 
@@ -278,10 +279,16 @@ calo serve --workspace /tmp/calo-example-loop --host 127.0.0.1 --port 6006
 On your local machine, open PowerShell on Windows or Terminal on macOS/Linux, then create the tunnel:
 
 ```bash
-ssh -CNg -L 6006:127.0.0.1:6006 root@connect.nmb2.seetacloud.com -p 20751
+ssh -CNg -L <local_port>:127.0.0.1:<remote_service_port> <user>@<ssh_host> -p <ssh_port>
 ```
 
-If SSH asks `yes/no`, answer `yes`. Enter the machine password when prompted. The terminal usually shows no output after a successful connection.
+For the `6006` service example, keep both forwarded ports as `6006` unless your local machine already uses that port:
+
+```bash
+ssh -CNg -L 6006:127.0.0.1:6006 <user>@<ssh_host> -p <ssh_port>
+```
+
+If SSH asks `yes/no`, answer `yes`. Enter the machine password or key passphrase when prompted. The terminal usually shows no output after a successful connection.
 
 Then open this URL locally:
 
