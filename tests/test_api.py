@@ -79,3 +79,27 @@ def test_api_callback_signature_validation(tmp_path: Path) -> None:
     )
     assert good.status_code == 200
     assert good.json()["best_metric"] == 0.6
+
+
+def test_api_lifecycle_controls(tmp_path: Path) -> None:
+    app = create_app(tmp_path / "api.sqlite3")
+    client = TestClient(app)
+    contract = LoopContract(
+        loop_id="life_loop",
+        objective="Lifecycle control",
+        repo_path=tmp_path / "repo",
+        target_value=0.7,
+    )
+    assert client.post("/api/v1/loops", json=contract.model_dump(mode="json")).status_code == 200
+
+    paused = client.post("/api/v1/loops/life_loop/pause")
+    assert paused.status_code == 200
+    assert paused.json()["status"] == "paused"
+
+    resumed = client.post("/api/v1/loops/life_loop/resume")
+    assert resumed.status_code == 200
+    assert resumed.json()["status"] == "ready"
+
+    cancelled = client.post("/api/v1/loops/life_loop/cancel")
+    assert cancelled.status_code == 200
+    assert cancelled.json()["status"] == "cancelled"

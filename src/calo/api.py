@@ -24,6 +24,21 @@ def create_app(db_path: Path | None = None) -> FastAPI:
         contract = controller.load_contract(loop_id)
         return controller.run_until_done(contract)
 
+    @app.post("/api/v1/loops/{loop_id}/pause")
+    def pause_loop(loop_id: str):
+        contract = controller.load_contract(loop_id)
+        return controller.pause_loop(contract)
+
+    @app.post("/api/v1/loops/{loop_id}/resume")
+    def resume_loop(loop_id: str):
+        contract = controller.load_contract(loop_id)
+        return controller.resume_loop(contract)
+
+    @app.post("/api/v1/loops/{loop_id}/cancel")
+    def cancel_loop(loop_id: str):
+        contract = controller.load_contract(loop_id)
+        return controller.cancel_loop(contract)
+
     @app.get("/api/v1/loops/{loop_id}")
     def get_loop(loop_id: str):
         return store.load_state(loop_id)

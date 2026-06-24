@@ -149,3 +149,18 @@ def test_async_step_waits_for_callback_then_collects(tmp_path: Path) -> None:
     assert final.status == LoopStatus.COMPLETED
     assert final.best_metric is not None
     assert final.best_metric >= 0.6
+
+
+def test_pause_resume_cancel_lifecycle(tmp_path: Path) -> None:
+    contract = make_contract(tmp_path, target=0.7, max_turns=2)
+    controller = LoopController(StateStore(tmp_path / "state.sqlite3"))
+    controller.create_loop(contract)
+
+    paused = controller.pause_loop(contract)
+    assert paused.status == LoopStatus.PAUSED
+
+    resumed = controller.resume_loop(contract)
+    assert resumed.status == LoopStatus.READY
+
+    cancelled = controller.cancel_loop(contract)
+    assert cancelled.status == LoopStatus.CANCELLED

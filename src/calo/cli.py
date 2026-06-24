@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 
 import typer
+import uvicorn
 
 from .controller import LoopController
 from .codex_runner import CodexCliRunner, LocalDeterministicCodexRunner
@@ -124,6 +125,36 @@ def collect_callback(
 
 
 @app.command()
+def pause(
+    loop_id: str = typer.Argument(...),
+    workspace: Path = typer.Option(..., help="State workspace used when the loop was created."),
+) -> None:
+    controller = _controller(workspace)
+    state = controller.pause_loop(controller.load_contract(loop_id))
+    typer.echo(state.model_dump_json(indent=2))
+
+
+@app.command()
+def resume(
+    loop_id: str = typer.Argument(...),
+    workspace: Path = typer.Option(..., help="State workspace used when the loop was created."),
+) -> None:
+    controller = _controller(workspace)
+    state = controller.resume_loop(controller.load_contract(loop_id))
+    typer.echo(state.model_dump_json(indent=2))
+
+
+@app.command()
+def cancel(
+    loop_id: str = typer.Argument(...),
+    workspace: Path = typer.Option(..., help="State workspace used when the loop was created."),
+) -> None:
+    controller = _controller(workspace)
+    state = controller.cancel_loop(controller.load_contract(loop_id))
+    typer.echo(state.model_dump_json(indent=2))
+
+
+@app.command()
 def status(
     loop_id: str = typer.Argument(...),
     workspace: Path = typer.Option(..., help="State workspace used when the loop was created."),
@@ -146,6 +177,17 @@ def list_loops(
 ) -> None:
     for state in _store(workspace).list_loops():
         typer.echo(f"{state.loop_id}\t{state.status}\tturn={state.turn}\tbest={state.best_metric}")
+
+
+@app.command()
+def serve(
+    workspace: Path = typer.Option(Path("."), help="Workspace containing .calo/state.sqlite3."),
+    host: str = typer.Option("127.0.0.1"),
+    port: int = typer.Option(8000),
+) -> None:
+    from .api import create_app
+
+    uvicorn.run(create_app(workspace / ".calo" / "state.sqlite3"), host=host, port=port)
 
 
 if __name__ == "__main__":

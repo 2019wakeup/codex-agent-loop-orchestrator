@@ -128,6 +128,25 @@ class LoopController:
         callback = self.task_runner.read_callback_file(contract, target_run_id)
         return self.handle_callback(contract, callback)
 
+    def pause_loop(self, contract: LoopContract) -> LoopState:
+        state = self.store.load_state(contract.loop_id)
+        state.status = LoopStatus.PAUSED
+        self._save(contract, state, "loop.paused", {})
+        return state
+
+    def resume_loop(self, contract: LoopContract) -> LoopState:
+        state = self.store.load_state(contract.loop_id)
+        if state.status == LoopStatus.PAUSED:
+            state.status = LoopStatus.READY
+            self._save(contract, state, "loop.resumed", {})
+        return state
+
+    def cancel_loop(self, contract: LoopContract) -> LoopState:
+        state = self.store.load_state(contract.loop_id)
+        state.status = LoopStatus.CANCELLED
+        self._save(contract, state, "loop.cancelled", {})
+        return state
+
     def handle_callback(self, contract: LoopContract, callback: CallbackPayload) -> LoopState:
         state = self.store.load_state(contract.loop_id)
         if not self.store.claim_callback(contract.loop_id, callback.run_id, callback.model_dump(mode="json")):

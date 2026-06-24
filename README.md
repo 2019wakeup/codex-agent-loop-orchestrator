@@ -33,6 +33,20 @@ calo events example_loop --workspace /tmp/calo-example-loop
 
 `workspace` stores the orchestrator SQLite DB at `.calo/state.sqlite3`. The target repo path is read from the loop contract and may be the same directory.
 
+Lifecycle controls:
+
+```bash
+calo pause example_loop --workspace /tmp/calo-example-loop
+calo resume example_loop --workspace /tmp/calo-example-loop
+calo cancel example_loop --workspace /tmp/calo-example-loop
+```
+
+Run the HTTP API:
+
+```bash
+calo serve --workspace /tmp/calo-example-loop --host 127.0.0.1 --port 8000
+```
+
 Runner backends:
 
 - `--runner local`: deterministic offline runner used by tests and demos.
