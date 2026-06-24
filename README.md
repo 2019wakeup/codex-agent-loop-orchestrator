@@ -1,22 +1,32 @@
 # Codex Agent Loop Orchestrator
 
-Local service for running low-noise Codex improvement loops around long-running work such as training, benchmarks, and regression searches.
+Local service for turning broad research or engineering goals into low-noise Codex-assisted orchestration loops.
+
+The intended entrypoint is a goal brief, not a hand-written JSON file. For example:
+
+```text
+Find and reproduce three high-quality fraud-detection baselines published or updated after 2024.
+Produce runnable reproduction notes, metrics, and a final comparison report.
+```
 
 The orchestrator owns the lifecycle. Codex-powered turns provide model intelligence in three short-lived roles:
 
-- **Planner** proposes the next task plan.
-- **Worker** applies the plan.
-- **Judge** evaluates evidence and recommends the next decision.
+- **Planner** turns the broad goal into a task graph and next task plan.
+- **Worker** applies short-lived code, configuration, adaptation, or documentation changes.
+- **Judge** evaluates evidence, task results, artifacts, and recommends the next decision.
 
-Long-running work stays outside Codex. The orchestrator launches it, records state, consumes callback results, and decides whether to continue, pause, stop, or ask for review.
+Long-running work stays outside Codex. Searches, downloads, dataset preparation, baseline reproduction, training, benchmarks, and report generation are TaskRuns owned by tmux, subprocesses, schedulers, or external systems. Once a long TaskRun is safely owned outside Codex, the orchestrator records state and forces an operational pause so no Codex turn sits around monitoring logs.
 
-Hard boundary: Codex roles cannot create or own loops. Planner, Worker, and Judge may write their required artifacts, but lifecycle transitions are executed only by the Orchestrator and Policy Engine. SQLite state is authoritative.
+Hard boundary: Codex roles cannot create or own loops, cannot instantiate real TaskRuns, and cannot recursively start new loops to keep control. Planner, Worker, and Judge may write their required artifacts, but task creation and lifecycle transitions are executed only by the Orchestrator and Policy Engine. SQLite state is authoritative.
+
+Production Codex turns are intended to run through the Codex SDK. Skills, `codex exec`, hooks, and thread automations can inspire operational-pause behavior or serve as temporary wake/debug surfaces, but they are not the Orchestrator control plane.
 
 ## What You Get
 
 - Local FastAPI service with Web UI at `/ui/`
 - CLI for creating, starting, stepping, pausing, resuming, cancelling, and inspecting loops
 - Planner / Worker / Judge role separation
+- Task graph and TaskRun orchestration model
 - Sync and async execution modes
 - SQLite state store
 - Idempotent callback handling
@@ -24,7 +34,7 @@ Hard boundary: Codex roles cannot create or own loops. Planner, Worker, and Judg
 - Git commits for source changes
 - Audit artifacts under `.codex/agent-loop/<loop_id>/`
 - Offline deterministic runner for testing
-- Optional `codex exec` runner for real Codex turns
+- Codex SDK runner target for real Planner / Worker / Judge turns
 
 ## Install
 
@@ -51,9 +61,26 @@ Expected test result:
 14 passed
 ```
 
+## Intended Product Flow
+
+The product flow should look like this:
+
+1. User submits a goal brief, repo path, constraints, resource budget, and approval preferences.
+2. Orchestrator compiles that into a goal contract.
+3. Planner produces a task graph, such as literature search, repo discovery, dataset download, environment setup, baseline reproduction, benchmark, and final report.
+4. Policy Engine validates the task graph against permissions, budget, and human gates.
+5. Orchestrator creates TaskRuns for approved tasks.
+6. Short work can run immediately through Worker or local commands.
+7. Long work is handed to an external owner. After that handoff, Codex must stop monitoring and the loop enters operational pause.
+8. Webhooks, status files, watchdogs, schedulers, or user actions wake the orchestrator later.
+9. Judge reviews compact evidence and recommends continue, fix, stop, rollback, or ask for review.
+10. Orchestrator decides and records the next state.
+
+The JSON contract is the durable internal control plane for this flow. It is still exposed in the current MVP and for automation, but it should not remain the main human entrypoint.
+
 ## 5-Minute Local Demo
 
-Run a complete local loop using the deterministic offline runner:
+Run a complete local loop using the deterministic offline runner. This demo is intentionally narrow and metric-based; it proves the loop machinery, not the final broad-goal UX:
 
 ```bash
 calo demo --workspace /tmp/calo-demo-workspace --target 0.70 --max-turns 3
@@ -80,7 +107,7 @@ Open:
 http://127.0.0.1:8000/ui/
 ```
 
-The Web UI shows loop-level status, turn progress, metric progress, last run, last decision, and recent events.
+The Web UI shows loop-level status, current phase, next action, turn progress, metric progress, last run, last decision, and a human-readable timeline.
 
 ## Core Concepts
 
@@ -105,6 +132,7 @@ Each loop writes audit files under:
 Important files:
 
 - `contract.json`
+- `task_graph/turn_<n>.json`
 - `state.json`
 - `plan/turn_<n>.json`
 - `handoff/turn_<n>.md`
@@ -115,7 +143,7 @@ Important files:
 
 ### Control Boundary
 
-Codex roles write plans, code changes, handoffs, and judge reports. They do not control the loop.
+Codex roles write task graph suggestions, plans, code changes, handoffs, and judge reports. They do not control the loop.
 
 The loop is controlled by:
 
@@ -123,11 +151,11 @@ The loop is controlled by:
 LoopController -> PolicyEngine -> StateStore
 ```
 
-This prevents a Codex turn from recursively creating new loops, force-completing a loop, or bypassing lifecycle policy.
+This prevents a Codex turn from recursively creating new loops, instantiating TaskRuns on its own, force-completing a loop, or bypassing lifecycle policy.
 
-## Configure a Loop
+## Current MVP Entry: Contract JSON
 
-Start from `examples/loop_contract.json`:
+The current MVP still starts from `examples/loop_contract.json`. Treat this as an advanced/API entrypoint and test fixture, not the final product UX.
 
 ```json
 {
@@ -160,6 +188,12 @@ Important fields:
 - `iteration_limits.patience`: stop after repeated low-improvement turns.
 - `commands.validation`: quick command before training.
 - `commands.train`: long-running command. It receives `{callback_file}`, `{run_id}`, and `{turn_id}` placeholders.
+
+Planned default human entrypoints:
+
+- `calo goal` interactive CLI: asks for a broad objective, repo, constraints, budget, and approval gates, then generates the contract.
+- Web UI create flow: goal brief first, advanced contract JSON hidden behind an inspection panel.
+- API `POST /api/v1/goals`: accepts a goal brief and creates a loop through the Planner.
 
 ## Sync Workflow
 
@@ -330,9 +364,11 @@ calo start example_loop --workspace /tmp/calo-example-loop --runner local
 
 The local runner is deterministic and offline. It is intended for tests, demos, and end-to-end validation without API credentials.
 
-### Codex CLI Runner
+### Codex SDK Runner Target
 
-Use real Codex turns through `codex exec`:
+The PRD target is a real Codex SDK runner. The runner must let Orchestrator create, run, resume, sandbox, and audit Planner / Worker / Judge turns programmatically. The SDK runner, not a skill, is the production path for model-backed decisions.
+
+The current MVP still exposes a `codex-cli` runner as a compatibility bridge:
 
 ```bash
 calo start example_loop \
@@ -355,6 +391,8 @@ The Codex CLI runner still obeys the same boundary:
 - Worker changes repo files and writes handoff artifacts.
 - Judge writes advisory reports.
 - Orchestrator and PolicyEngine own lifecycle transitions.
+
+Do not treat `codex-cli` as the final architecture. It is useful for smoke tests while the SDK adapter is being wired, but production orchestration should use Codex SDK calls and persist SDK thread metadata.
 
 ## HTTP API
 
