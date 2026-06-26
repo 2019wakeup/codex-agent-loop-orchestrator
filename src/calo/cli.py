@@ -8,7 +8,8 @@ import uvicorn
 
 from .controller import LoopController
 from .codex_runner import CodexCliRunner, LocalDeterministicCodexRunner
-from .models import Commands, IterationLimits, LoopContract
+from .goal import contract_from_goal
+from .models import Commands, GoalRequest, IterationLimits, LoopContract
 from .store import StateStore
 
 app = typer.Typer(help="Codex Agent Loop Orchestrator MVP")
@@ -82,6 +83,53 @@ def create(
     state_workspace = workspace or contract.repo_path
     state = _controller(state_workspace, runner, model).create_loop(contract)
     typer.echo(f"created {contract.loop_id} status={state.status} db={state_workspace / '.calo' / 'state.sqlite3'}")
+
+
+@app.command()
+def goal(
+    objective: str = typer.Option(..., "--objective", "-o", help="Plain-language goal brief."),
+    workspace: Path = typer.Option(..., help="State workspace for .calo/state.sqlite3."),
+    repo_path: Path | None = typer.Option(None, help="Repository/work directory. Defaults to workspace."),
+    loop_id: str | None = typer.Option(None, help="Optional stable loop id."),
+    target_metric: str = typer.Option("score", help="Metric name the judge/policy should track."),
+    target: float = typer.Option(0.8, help="Target metric value."),
+    execution_mode: str = typer.Option("sync", help="Execution mode: sync or async."),
+    max_turns: int = typer.Option(3, help="Maximum loop turns."),
+    patience: int | None = typer.Option(None, help="No-improvement patience. Defaults to max_turns."),
+    min_delta: float = typer.Option(0.001, help="Minimum metric improvement."),
+    validation_command: str = typer.Option("python -m py_compile target_app.py", help="Fast validation command."),
+    task_command: str = typer.Option(
+        "python fake_train.py --callback-file {callback_file} --run-id {run_id} --turn-id {turn_id}",
+        help="TaskRun command. Supports {callback_file}, {run_id}, and {turn_id}.",
+    ),
+    require_diff_review: bool = typer.Option(False, help="Require human review before committing/running."),
+    auto_commit: bool = typer.Option(True, help="Allow orchestrator audit commits for accepted changes."),
+    runner: str = typer.Option("local", help="Runner backend: local or codex-cli."),
+    model: str | None = typer.Option(None, help="Model for codex-cli runner."),
+) -> None:
+    if execution_mode not in {"sync", "async"}:
+        raise typer.BadParameter("execution_mode must be one of: sync, async")
+    goal_request = GoalRequest(
+        objective=objective,
+        repo_path=repo_path or workspace,
+        loop_id=loop_id,
+        target_metric=target_metric,
+        target_value=target,
+        execution_mode=execution_mode,
+        max_turns=max_turns,
+        patience=patience,
+        min_delta=min_delta,
+        validation_command=validation_command,
+        task_command=task_command,
+        require_diff_review=require_diff_review,
+        auto_commit=auto_commit,
+    )
+    contract = contract_from_goal(goal_request)
+    state = _controller(workspace, runner, model).create_loop(contract)
+    typer.echo(f"created {contract.loop_id} from goal brief status={state.status}")
+    typer.echo(f"objective={contract.objective}")
+    typer.echo(f"contract={contract.artifact_root / 'contract.json'}")
+    typer.echo(f"start=calo start {contract.loop_id} --workspace {workspace}")
 
 
 @app.command()

@@ -3,48 +3,111 @@ from __future__ import annotations
 from pathlib import Path
 
 from fastapi import FastAPI, Header, Request
+from fastapi import HTTPException
 from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
 from .controller import LoopController
+from .codex_runner import CodexCliRunner, LocalDeterministicCodexRunner
 from .dashboard import build_loop_summary, list_loop_summaries
-from .models import CallbackPayload, LoopContract
+from .goal import contract_from_goal
+from .models import CallbackPayload, GoalRequest, LoopContract, LoopStatus
 from .security import verify_signature
 from .store import StateStore
 
 
 def create_app(db_path: Path | None = None) -> FastAPI:
     app = FastAPI(title="Codex Agent Loop Orchestrator")
-    store = StateStore(db_path or Path(".calo/state.sqlite3"))
-    controller = LoopController(store)
+    resolved_db_path = db_path or Path(".calo/state.sqlite3")
+    store = StateStore(resolved_db_path)
     ui_dir = Path(__file__).parent / "ui"
     app.mount("/ui", StaticFiles(directory=ui_dir, html=True), name="ui")
+
+    def make_runner(kind: str = "local", model: str | None = None):
+        if kind == "local":
+            return LocalDeterministicCodexRunner()
+        if kind == "codex-cli":
+            return CodexCliRunner(model=model)
+        raise HTTPException(status_code=400, detail="runner must be one of: local, codex-cli")
+
+    def controller_for(runner: str = "local", model: str | None = None) -> LoopController:
+        return LoopController(store, runner=make_runner(runner, model))
+
+    def default_workspace() -> Path:
+        if resolved_db_path.name == "state.sqlite3" and resolved_db_path.parent.name == ".calo":
+            return resolved_db_path.parent.parent
+        return resolved_db_path.parent
 
     @app.get("/", include_in_schema=False)
     def root():
         return RedirectResponse(url="/ui/")
 
+    @app.get("/api/v1/context")
+    def context():
+        return {"default_repo_path": str(default_workspace()), "runner": "local", "runner_options": ["local", "codex-cli"]}
+
     @app.post("/api/v1/loops")
     def create_loop(contract: LoopContract):
-        return controller.create_loop(contract)
+        return controller_for().create_loop(contract)
+
+    @app.post("/api/v1/goals")
+    def create_goal(goal: GoalRequest):
+        contract = contract_from_goal(goal)
+        return controller_for().create_loop(contract)
 
     @app.post("/api/v1/loops/{loop_id}/start")
-    def start_loop(loop_id: str):
+    def start_loop(loop_id: str, runner: str = "local", model: str | None = None):
+        controller = controller_for(runner, model)
         contract = controller.load_contract(loop_id)
-        return controller.run_until_done(contract)
+        state = store.load_state(loop_id)
+        if state.status != LoopStatus.READY:
+            raise HTTPException(status_code=409, detail=f"cannot start while loop status is {state.status}")
+        try:
+            return controller.run_until_done(contract)
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    @app.post("/api/v1/loops/{loop_id}/step")
+    def step_loop(loop_id: str, runner: str = "local", model: str | None = None):
+        controller = controller_for(runner, model)
+        contract = controller.load_contract(loop_id)
+        try:
+            return controller.run_one_turn(contract)
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    @app.post("/api/v1/loops/{loop_id}/collect-callback")
+    def collect_callback(loop_id: str, run_id: str | None = None, runner: str = "local", model: str | None = None):
+        controller = controller_for(runner, model)
+        contract = controller.load_contract(loop_id)
+        try:
+            return controller.collect_callback_file(contract, run_id)
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     @app.post("/api/v1/loops/{loop_id}/pause")
-    def pause_loop(loop_id: str):
+    def pause_loop(loop_id: str, runner: str = "local", model: str | None = None):
+        make_runner(runner, model)
+        controller = controller_for()
         contract = controller.load_contract(loop_id)
-        return controller.pause_loop(contract)
+        try:
+            return controller.pause_loop(contract)
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
 
     @app.post("/api/v1/loops/{loop_id}/resume")
-    def resume_loop(loop_id: str):
+    def resume_loop(loop_id: str, runner: str = "local", model: str | None = None):
+        make_runner(runner, model)
+        controller = controller_for()
         contract = controller.load_contract(loop_id)
         return controller.resume_loop(contract)
 
     @app.post("/api/v1/loops/{loop_id}/cancel")
-    def cancel_loop(loop_id: str):
+    def cancel_loop(loop_id: str, runner: str = "local", model: str | None = None):
+        make_runner(runner, model)
+        controller = controller_for()
         contract = controller.load_contract(loop_id)
         return controller.cancel_loop(contract)
 
@@ -78,14 +141,16 @@ def create_app(db_path: Path | None = None) -> FastAPI:
         x_agent_loop_timestamp: str | None = Header(default=None),
         x_agent_loop_signature: str | None = Header(default=None),
     ):
+        controller = controller_for()
         contract = controller.load_contract(loop_id)
         body = await request.body()
         verify_signature(contract, body, x_agent_loop_timestamp, x_agent_loop_signature)
         payload = CallbackPayload.model_validate_json(body)
         if payload.run_id != run_id or payload.loop_id != loop_id:
-            from fastapi import HTTPException
-
             raise HTTPException(status_code=400, detail="callback path does not match payload")
-        return controller.handle_callback(contract, payload)
+        try:
+            return controller.handle_callback(contract, payload)
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
 
     return app

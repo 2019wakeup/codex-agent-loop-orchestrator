@@ -1,11 +1,22 @@
 const state = {
   loops: [],
   selectedLoopId: null,
+  defaultRepoPath: "",
+  runner: "local",
+  model: "",
+  actionMessage: "",
+  actionMessageKind: "",
 };
 
 const els = {
   health: document.querySelector("#health"),
   refresh: document.querySelector("#refresh"),
+  goalForm: document.querySelector("#goal-form"),
+  goalMessage: document.querySelector("#goal-message"),
+  goalSubmit: document.querySelector("#goal-submit"),
+  goalRepo: document.querySelector("#goal-repo"),
+  goalRunner: document.querySelector("#goal-runner"),
+  goalModel: document.querySelector("#goal-model"),
   loops: document.querySelector("#loops"),
   loopCount: document.querySelector("#loop-count"),
   detailTitle: document.querySelector("#detail-title"),
@@ -70,7 +81,7 @@ function statusInsight(loop) {
     judging: ["Evaluating evidence", "The Judge role is scoring results and recommending a policy decision."],
     policy_checking: ["Checking policy", "The Policy Engine is deciding whether to continue, pause, or complete."],
     training_running: ["Training is running", "Codex is idle while the external command does the long work."],
-    waiting_callback: ["Waiting for callback", "Collect the callback when training writes its result file or webhook payload."],
+    waiting_callback: ["Operational pause", "Codex is not monitoring. The external owner must write or post the wake result."],
     review_required: ["Human review required", "A gate or risk condition needs review before the loop continues."],
     paused: ["Paused", "Resume when you are ready for the orchestrator to continue."],
     completed: ["Target reached", `The loop met its objective for ${target}.`],
@@ -82,9 +93,9 @@ function statusInsight(loop) {
 
 function nextActionText(loop) {
   const actions = {
-    ready: "Start the next turn.",
+    ready: "Start the run or step one turn.",
     training_running: "Wait for training to finish.",
-    waiting_callback: "Collect or post the training callback.",
+    waiting_callback: loop.callback_ready ? "Collect the callback from the wake path." : "Wait until the wake path exists.",
     paused: "Resume the loop when ready.",
     review_required: "Review artifacts, then resume if acceptable.",
     completed: "Read the final report or create a new loop.",
@@ -190,12 +201,40 @@ function describeEvent(event) {
       ],
     },
     "run.started": {
-      title: "Training run started",
+      title: "TaskRun started",
       body: "Long-running work was launched outside the Codex turn.",
       chips: [
         { label: "run", value: payload.run_id },
         { label: "turn", value: payload.turn_id },
         { label: "pid", value: payload.pid },
+      ],
+    },
+    "run.launched_async": {
+      title: "TaskRun handed to external owner",
+      body: "The async task has an owner and wake path, so the orchestrator can pause Codex work.",
+      chips: [
+        { label: "run", value: payload.run_id },
+        { label: "owner", value: payload.owner },
+        { label: "wake", value: payload.wake_path },
+        { label: "control", value: labelize(payload.codex_control) },
+      ],
+    },
+    "loop.operational_pause": {
+      title: "Operational pause entered",
+      body: payload.reason || "Codex control has been released until a wake event arrives.",
+      chips: [
+        { label: "run", value: payload.run_id },
+        { label: "owner", value: payload.owner },
+        { label: "wake", value: payload.wake_path },
+        { label: "control", value: labelize(payload.codex_control) },
+      ],
+    },
+    "run.launch_failed": {
+      title: "TaskRun launch blocked",
+      body: payload.reason || "The orchestrator refused to enter operational pause without a durable owner and wake path.",
+      chips: [
+        { label: "run", value: payload.run_id },
+        { label: "manifest", value: payload.manifest_path },
       ],
     },
     "run.completed": {
@@ -223,7 +262,7 @@ function describeEvent(event) {
     },
     "loop.paused": {
       title: "Loop paused",
-      body: "Lifecycle execution is stopped until a resume command is received.",
+      body: "Orchestrator execution is stopped until a resume command is received.",
       chips: [],
     },
     "loop.resumed": {
@@ -233,8 +272,15 @@ function describeEvent(event) {
     },
     "loop.cancelled": {
       title: "Loop cancelled",
-      body: "The orchestrator will not schedule more turns for this loop.",
-      chips: [],
+      body:
+        payload.external_task_control === "not_terminated"
+          ? "Orchestration was cancelled. The external TaskRun was not terminated and remains with its owner."
+          : "The orchestrator will not schedule more turns for this loop.",
+      chips: [
+        { label: "run", value: payload.run_id },
+        { label: "owner", value: payload.owner },
+        { label: "external control", value: labelize(payload.external_task_control) },
+      ],
     },
   };
   return { ...fallback, ...(descriptions[type] || {}) };
@@ -262,7 +308,8 @@ function renderEvents(events) {
     .join("");
 }
 
-function actionConfig(status) {
+function actionConfig(loop) {
+  const status = loop.status;
   const activeStates = new Set([
     "planning",
     "codex_running",
@@ -276,7 +323,9 @@ function actionConfig(status) {
   const terminalStates = new Set(["completed", "cancelled"]);
   return {
     start: !terminalStates.has(status) && !activeStates.has(status) && status !== "paused",
-    pause: !terminalStates.has(status) && status !== "paused",
+    step: status === "ready",
+    collect: status === "waiting_callback" && loop.callback_ready === true,
+    pause: !terminalStates.has(status) && status !== "paused" && status !== "waiting_callback",
     resume: status === "paused" || status === "review_required",
     cancel: !terminalStates.has(status),
   };
@@ -303,10 +352,109 @@ async function loadDashboard() {
   }
 }
 
+function runnerQuery() {
+  const params = new URLSearchParams();
+  state.runner = els.goalRunner?.value || state.runner || "local";
+  state.model = els.goalModel?.value.trim() || "";
+  if (state.runner) params.set("runner", state.runner);
+  if (state.model) params.set("model", state.model);
+  const query = params.toString();
+  return query ? `?${query}` : "";
+}
+
 async function postAction(loopId, action) {
-  const response = await fetch(`/api/v1/loops/${encodeURIComponent(loopId)}/${action}`, { method: "POST" });
-  if (!response.ok) throw new Error(`${action} failed with HTTP ${response.status}`);
-  await loadDashboard();
+  const response = await fetch(`/api/v1/loops/${encodeURIComponent(loopId)}/${action}${runnerQuery()}`, { method: "POST" });
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(text || `${action} failed with HTTP ${response.status}`);
+  }
+  return response.json();
+}
+
+function setGoalMessage(message, kind = "") {
+  els.goalMessage.textContent = message;
+  els.goalMessage.className = `form-message ${kind}`.trim();
+}
+
+async function loadContext() {
+  try {
+    const response = await fetch("/api/v1/context", { cache: "no-store" });
+    if (!response.ok) return;
+    const context = await response.json();
+    state.defaultRepoPath = context.default_repo_path || "";
+    state.runner = context.runner || "local";
+    if (state.defaultRepoPath && !els.goalRepo.value) {
+      els.goalRepo.value = state.defaultRepoPath;
+    }
+    if (els.goalRunner) els.goalRunner.value = state.runner;
+  } catch (_error) {
+    // The dashboard can still operate without context defaults.
+  }
+}
+
+async function submitGoal(event) {
+  event.preventDefault();
+  const formData = new FormData(els.goalForm);
+  const objective = `${formData.get("objective") || ""}`.trim();
+  const repoPath = `${formData.get("repo_path") || ""}`.trim();
+  const loopId = `${formData.get("loop_id") || ""}`.trim();
+  const targetMetric = `${formData.get("target_metric") || "score"}`.trim() || "score";
+  const targetValue = Number(formData.get("target_value"));
+  const maxTurns = Number.parseInt(`${formData.get("max_turns") || "3"}`, 10);
+  const patienceRaw = `${formData.get("patience") || ""}`.trim();
+  const patience = patienceRaw ? Number.parseInt(patienceRaw, 10) : null;
+  const minDelta = Number(formData.get("min_delta"));
+  const validationCommand = `${formData.get("validation_command") || ""}`.trim();
+  const taskCommand = `${formData.get("task_command") || ""}`.trim();
+  state.runner = `${formData.get("runner") || "local"}`;
+  state.model = `${formData.get("model") || ""}`.trim();
+
+  if (!objective || !repoPath) {
+    setGoalMessage("Goal brief and repo path are required.", "error");
+    return;
+  }
+
+  const payload = {
+    objective,
+    repo_path: repoPath,
+    loop_id: loopId || null,
+    target_metric: targetMetric,
+    target_value: Number.isFinite(targetValue) ? targetValue : 0.7,
+    max_turns: Number.isFinite(maxTurns) ? maxTurns : 3,
+    patience: Number.isFinite(patience) ? patience : null,
+    min_delta: Number.isFinite(minDelta) ? minDelta : 0.001,
+    validation_command: validationCommand || "python -m py_compile target_app.py",
+    task_command: taskCommand || "python fake_train.py --callback-file {callback_file} --run-id {run_id} --turn-id {turn_id}",
+    execution_mode: formData.get("async") ? "async" : "sync",
+    require_diff_review: Boolean(formData.get("require_diff_review")),
+    auto_commit: Boolean(formData.get("auto_commit")),
+  };
+
+  els.goalSubmit.disabled = true;
+  setGoalMessage("Creating loop...");
+  try {
+    const response = await fetch("/api/v1/goals", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(errorText || `HTTP ${response.status}`);
+    }
+    const created = await response.json();
+    state.selectedLoopId = created.loop_id;
+    els.goalForm.reset();
+    if (state.defaultRepoPath) els.goalRepo.value = state.defaultRepoPath;
+    if (els.goalRunner) els.goalRunner.value = state.runner;
+    if (els.goalModel) els.goalModel.value = state.model;
+    setGoalMessage(`Created ${created.loop_id}.`, "success");
+    await loadDashboard();
+  } catch (error) {
+    setGoalMessage(`Create failed: ${error.message}`, "error");
+  } finally {
+    els.goalSubmit.disabled = false;
+  }
 }
 
 function render() {
@@ -325,6 +473,10 @@ function render() {
     row.querySelector(".decision").textContent = loop.last_decision ? labelize(loop.last_decision) : "no decision yet";
     row.querySelector(".bar span").style.width = `${loop.progress_percent}%`;
     row.addEventListener("click", () => {
+      if (state.selectedLoopId !== loop.loop_id) {
+        state.actionMessage = "";
+        state.actionMessageKind = "";
+      }
       state.selectedLoopId = loop.loop_id;
       render();
     });
@@ -346,7 +498,15 @@ function renderDetail(loop) {
   els.detailStatus.className = statusClass(loop.status);
   const metricPercent = loop.metric_percent === null ? "n/a" : `${loop.metric_percent}%`;
   const [phaseTitle, phaseBody] = statusInsight(loop);
-  const actions = actionConfig(loop.status);
+  const actions = actionConfig(loop);
+  const callbackState =
+    loop.status === "waiting_callback"
+      ? loop.callback_ready
+        ? "Callback ready"
+        : "Callback not ready"
+      : loop.callback_processed
+        ? "Callback processed"
+        : formatValue(loop.callback_ready);
   els.detail.innerHTML = `
     <div class="detail-body">
       <section class="phase-panel" aria-label="Current phase">
@@ -375,14 +535,24 @@ function renderDetail(loop) {
         <div><span>Last decision</span><strong>${escapeHtml(loop.last_decision ? labelize(loop.last_decision) : "n/a")}</strong></div>
         <div><span>Updated</span><strong>${escapeHtml(formatDate(loop.updated_at))}</strong></div>
         <div><span>Repo path</span><strong>${escapeHtml(formatValue(loop.repo_path))}</strong></div>
+        <div><span>Run owner</span><strong>${escapeHtml(formatValue(loop.run_owner))}</strong></div>
+        <div><span>Run status</span><strong>${escapeHtml(formatValue(loop.run_status))}</strong></div>
+        <div><span>Callback</span><strong>${escapeHtml(callbackState)}</strong></div>
+        <div><span>Wake path</span><strong>${escapeHtml(formatValue(loop.wake_path))}</strong></div>
+        <div><span>Run log</span><strong>${escapeHtml(formatValue(loop.run_stdout_path))}</strong></div>
+        <div><span>Codex control</span><strong>${escapeHtml(loop.codex_control ? labelize(loop.codex_control) : "n/a")}</strong></div>
+        <div><span>Run manifest</span><strong>${escapeHtml(formatValue(loop.run_manifest_path))}</strong></div>
       </div>
       <div class="section-title">Actions</div>
       <div class="button-row">
         <button class="button primary" data-action="start" ${actions.start ? "" : "disabled"}>Start</button>
+        <button class="button" data-action="step" ${actions.step ? "" : "disabled"}>Step</button>
+        <button class="button" data-action="collect-callback" ${actions.collect ? "" : "disabled"}>${loop.callback_ready ? "Collect callback" : "Await callback"}</button>
         <button class="button" data-action="pause" ${actions.pause ? "" : "disabled"}>Pause</button>
         <button class="button" data-action="resume" ${actions.resume ? "" : "disabled"}>Resume</button>
         <button class="button danger" data-action="cancel" ${actions.cancel ? "" : "disabled"}>Cancel</button>
       </div>
+      <div id="action-message" class="action-message ${escapeHtml(state.actionMessageKind)}" role="status" aria-live="polite">${escapeHtml(state.actionMessage)}</div>
       <div class="section-title">Loop timeline</div>
       <div class="event-list">${renderEvents(loop.recent_events || [])}</div>
     </div>
@@ -390,8 +560,19 @@ function renderDetail(loop) {
   els.detail.querySelectorAll("[data-action]").forEach((button) => {
     button.addEventListener("click", async () => {
       button.disabled = true;
+      const actionMessage = els.detail.querySelector("#action-message");
+      actionMessage.textContent = `${button.textContent}...`;
+      actionMessage.className = "action-message";
       try {
-        await postAction(loop.loop_id, button.dataset.action);
+        const result = await postAction(loop.loop_id, button.dataset.action);
+        state.actionMessage = `${button.textContent} succeeded: ${labelize(result.status)}.`;
+        state.actionMessageKind = "success";
+        await loadDashboard();
+      } catch (error) {
+        state.actionMessage = `${button.textContent} failed: ${error.message}`;
+        state.actionMessageKind = "error";
+        actionMessage.textContent = state.actionMessage;
+        actionMessage.className = "action-message error";
       } finally {
         button.disabled = false;
       }
@@ -400,5 +581,6 @@ function renderDetail(loop) {
 }
 
 els.refresh.addEventListener("click", loadDashboard);
-loadDashboard();
+els.goalForm.addEventListener("submit", submitGoal);
+loadContext().then(loadDashboard);
 setInterval(loadDashboard, 5000);

@@ -67,10 +67,14 @@ class TaskRunner:
             "loop_id": contract.loop_id,
             "run_id": run_id,
             "turn_id": turn_id,
+            "owner": "local_subprocess",
             "pid": process.pid,
             "command": command,
+            "wake_path": str(callback_file),
             "callback_file": str(callback_file),
             "stdout_file": str(stdout_file),
+            "codex_control": "released",
+            "operational_pause": True,
             "status": "running",
         }
         manifest_path = contract.artifact_root / "runs" / f"{run_id}_manifest.json"
@@ -79,6 +83,8 @@ class TaskRunner:
 
     def read_callback_file(self, contract: LoopContract, run_id: str) -> CallbackPayload:
         callback_file = contract.artifact_root / "runs" / f"{run_id}_callback.json"
+        if not callback_file.exists():
+            raise FileNotFoundError(f"callback file is not ready: {callback_file}")
         return CallbackPayload.model_validate_json(callback_file.read_text(encoding="utf-8"))
 
 

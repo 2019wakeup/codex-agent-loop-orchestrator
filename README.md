@@ -64,7 +64,7 @@ pytest -q
 Expected test result:
 
 ```text
-14 passed
+30 passed
 ```
 
 ## Intended Product Flow
@@ -99,9 +99,10 @@ CALO is intended to replace brittle research automation patterns:
 The current repository is a working local MVP, but not the final product experience:
 
 - It proves loop state, policy decisions, callback idempotency, sync/async demos, Git audit commits, and a local Web UI.
-- It still exposes `examples/loop_contract.json` as the main runnable entry.
+- It supports goal-first creation from CLI, API, and Web UI.
+- It still exposes `examples/loop_contract.json` as an advanced automation and test-fixture entry.
 - It has a deterministic local runner and a `codex-cli` compatibility bridge.
-- It does not yet implement the default goal brief entrypoint, full TaskGraph/TaskRun models, or production Codex SDK adapter.
+- It does not yet implement full TaskGraph/TaskRun persistence models or the production Codex SDK adapter.
 
 Use the current MVP to validate the orchestration spine. Use the PRD as the source of truth for the product direction.
 
@@ -180,9 +181,24 @@ LoopController -> PolicyEngine -> StateStore
 
 This prevents a Codex turn from recursively creating new loops, instantiating TaskRuns on its own, force-completing a loop, or bypassing lifecycle policy.
 
-## Current MVP Entry: Contract JSON
+## Current MVP Entry: Goal Brief
 
-The current MVP still starts from `examples/loop_contract.json`. Treat this as an advanced/API entrypoint and test fixture, not the final product UX.
+The current MVP now supports a goal-first CLI and API path. This is the recommended human entrypoint:
+
+```bash
+calo goal \
+  --objective "Raise fake score from a plain goal brief" \
+  --workspace /tmp/calo-goal-loop \
+  --loop-id goal_loop \
+  --target 0.6 \
+  --max-turns 2
+
+calo start goal_loop --workspace /tmp/calo-goal-loop
+```
+
+The goal command compiles a durable contract, stores it under `.codex/agent-loop/<loop_id>/contract.json`, and tells you the exact start command.
+
+The contract JSON path remains available as an advanced/API entrypoint and test fixture:
 
 ```json
 {
@@ -216,23 +232,26 @@ Important fields:
 - `commands.validation`: quick command before training.
 - `commands.train`: long-running command. It receives `{callback_file}`, `{run_id}`, and `{turn_id}` placeholders.
 
-Planned default human entrypoints:
+Available default human entrypoints:
 
-- `calo goal` interactive CLI: asks for a broad objective, repo, constraints, budget, and approval gates, then generates the contract.
-- Web UI create flow: goal brief first, advanced contract JSON hidden behind an inspection panel.
-- API `POST /api/v1/goals`: accepts a goal brief and creates a loop through the Planner.
+- `calo goal`: accepts a broad objective, repo, constraints, budget, and approval gates, then generates the contract.
+- API `POST /api/v1/goals`: accepts a goal brief and creates a loop through the Orchestrator.
+
+Planned next entrypoint:
+
+- Web UI task graph view and artifact browser.
 
 ## Product Roadmap
 
 Now:
 
-- Keep the existing contract JSON entry stable for tests and automation.
-- Tighten the dashboard around phase, next action, owner, wake path, and readable event summaries.
+- Keep goal-first CLI/API/Web creation stable while preserving contract JSON for tests and automation.
+- Tighten the dashboard around phase, next action, owner, wake path, callback readiness, and readable event summaries.
 - Preserve deterministic local runner for acceptance tests.
 
 Next:
 
-- Add `calo goal` and `POST /api/v1/goals` to compile goal briefs into contracts.
+- Harden `calo goal`, `POST /api/v1/goals`, and Web goal creation for real user repositories.
 - Add TaskGraph and TaskRun persistence models.
 - Replace training-specific naming in callbacks and events with generic TaskRun language while preserving backward compatibility.
 - Implement Codex SDK Runner as the production model-backed path.
@@ -240,7 +259,7 @@ Next:
 
 Later:
 
-- Add Web UI goal wizard and task graph view.
+- Add Web UI task graph view and artifact browser.
 - Add artifact browser and final report viewer.
 - Add scheduler integrations for tmux/systemd/Slurm/Ray/Kubernetes.
 - Add multi-loop queueing, PR integration, and team audit controls.
@@ -282,7 +301,7 @@ http://127.0.0.1:8000/ui/
 
 ## Async Workflow
 
-Async mode launches training as a background process and returns with the loop in `waiting_callback`.
+Async mode launches training as a background process and returns with the loop in `waiting_callback`. This is an operational pause: the manifest must name an external owner and wake path before the orchestrator releases Codex control.
 
 Create the loop:
 
@@ -300,6 +319,7 @@ The loop should now be waiting:
 
 ```text
 "status": "waiting_callback"
+"last_decision": "operational_pause"
 ```
 
 Collect the callback file after training writes it:
@@ -309,6 +329,12 @@ calo collect-callback async_example_loop --workspace /tmp/calo-async-example-loo
 ```
 
 Repeat `step` and `collect-callback` until the loop reaches `completed`, or use the Web UI to watch progress.
+
+The run manifest records:
+
+- `owner`: who holds the long-running TaskRun, for example `local_subprocess`
+- `wake_path`: the callback file or webhook path that will wake the loop
+- `codex_control`: `released`, meaning Codex is not monitoring logs
 
 ## Web UI
 
@@ -324,6 +350,16 @@ Open:
 http://127.0.0.1:8000/ui/
 ```
 
+The dashboard lets you create and operate local loops:
+
+- Create a loop from a goal brief without hand-writing contract JSON
+- Configure target metric, patience, min delta, validation command, TaskRun command, diff review, auto commit, runner, and model from advanced settings
+- Start a loop until the next terminal or waiting state
+- Step exactly one orchestrator turn
+- Collect an async callback after the wake path is written
+- Pause and resume orchestrator-owned work
+- Cancel orchestration while explicitly preserving external TaskRun ownership
+
 The dashboard tracks:
 
 - Loop status
@@ -335,10 +371,17 @@ The dashboard tracks:
 - Last run ID
 - Last decision
 - Human-readable loop timeline with expandable details
+- Async TaskRun owner, wake path, run manifest, and Codex control state
+- Callback readiness, run status, and run log path for async TaskRuns
+
+Operational pause is already a release of Codex control, so `waiting_callback` loops are not pausable. Collect the callback when the wake path is ready, or cancel orchestration if the loop should stop. Cancelling a loop does not terminate an external TaskRun; the manifest and timeline record that the external owner still controls it.
 
 Buttons call the same backend lifecycle endpoints as the CLI:
 
+- Create loop
 - Start
+- Step
+- Collect callback
 - Pause
 - Resume
 - Cancel
@@ -389,6 +432,7 @@ Notes:
 ## CLI Reference
 
 ```bash
+calo goal --objective <goal brief> --workspace <workspace>
 calo create --config <contract.json> --workspace <workspace>
 calo start <loop_id> --workspace <workspace>
 calo step <loop_id> --workspace <workspace>
@@ -446,13 +490,13 @@ Do not treat `codex-cli` as the final architecture. It is useful for smoke tests
 
 ## HTTP API
 
-Goal-first API target:
+Goal-first API:
 
 ```http
 POST /api/v1/goals
 ```
 
-Current MVP advanced/API entry:
+Advanced/API entry:
 
 ```http
 POST /api/v1/loops
@@ -462,9 +506,18 @@ Lifecycle:
 
 ```http
 POST /api/v1/loops/{loop_id}/start
+POST /api/v1/loops/{loop_id}/step
+POST /api/v1/loops/{loop_id}/collect-callback
 POST /api/v1/loops/{loop_id}/pause
 POST /api/v1/loops/{loop_id}/resume
 POST /api/v1/loops/{loop_id}/cancel
+```
+
+Lifecycle endpoints accept optional `runner` and `model` query parameters for API symmetry. `start`, `step`, and `collect-callback` use them when invoking a runner; `pause`, `resume`, and `cancel` validate them for consistent Web behavior:
+
+```text
+?runner=local
+?runner=codex-cli&model=<model>
 ```
 
 Read state:
@@ -473,6 +526,7 @@ Read state:
 GET /api/v1/loops
 GET /api/v1/loops/{loop_id}
 GET /api/v1/loops/{loop_id}/events
+GET /api/v1/context
 GET /api/v1/dashboard
 GET /api/v1/loops/{loop_id}/summary
 ```
@@ -501,7 +555,13 @@ The timestamp is checked against `webhook.timestamp_tolerance_seconds`.
 Run all tests:
 
 ```bash
-pytest -q
+python -m pytest -q
+```
+
+Run goal-first acceptance:
+
+```bash
+bash scripts/goal_acceptance_demo.sh /tmp/calo-goal-acceptance
 ```
 
 Run sync acceptance:
@@ -514,6 +574,12 @@ Run async acceptance:
 
 ```bash
 bash scripts/async_acceptance_demo.sh /tmp/calo-async-acceptance
+```
+
+Run Web acceptance:
+
+```bash
+bash scripts/web_acceptance_demo.sh /tmp/calo-web-acceptance 8766
 ```
 
 The async script proves:
@@ -588,12 +654,13 @@ calo start <loop_id> --workspace <workspace> --runner local
 This repository is usable as a local MVP:
 
 - It can run complete sync demo loops.
+- It can create runnable loops from plain goal briefs.
 - It can run async callback demo loops.
 - It has a local Web UI.
 - It has signed, idempotent callbacks.
 - It has tests and acceptance scripts.
 - It keeps lifecycle authority in the Orchestrator and PolicyEngine.
-- It still needs the goal brief entrypoint, generic TaskGraph/TaskRun model, and production Codex SDK Runner to match the full PRD.
+- It still needs generic TaskGraph/TaskRun models, artifact browsing, and the production Codex SDK Runner to match the full PRD.
 
 See also:
 

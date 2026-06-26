@@ -2,12 +2,17 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+from pydantic import ValidationError
+
 from calo.artifacts import write_json
 from calo.controller import LoopController
 from calo.codex_runner import LOOP_CONTROL_BOUNDARY, CodexCliRunner, LocalDeterministicCodexRunner
+from calo.goal import contract_from_goal
 from calo.models import (
     CallbackPayload,
     Commands,
+    GoalRequest,
     IterationLimits,
     JudgeReport,
     LoopContract,
@@ -105,6 +110,44 @@ def test_contract_persists_for_resume(tmp_path: Path) -> None:
     assert state.status == LoopStatus.COMPLETED
 
 
+def test_goal_request_compiles_to_contract_with_safe_defaults(tmp_path: Path) -> None:
+    request = GoalRequest(
+        loop_id="brief_loop",
+        objective="  Reproduce three fraud baselines without long polling  ",
+        repo_path=tmp_path / "repo",
+        target_value=0.7,
+        execution_mode="async",
+        max_turns=0,
+    )
+
+    contract = contract_from_goal(request)
+
+    assert contract.loop_id == "brief_loop"
+    assert contract.objective == "Reproduce three fraud baselines without long polling"
+    assert contract.repo_path == tmp_path / "repo"
+    assert contract.execution_mode == "async"
+    assert contract.iteration_limits.max_turns == 1
+    assert contract.iteration_limits.patience == 1
+    assert "{callback_file}" in contract.commands.train
+
+
+def test_goal_and_contract_reject_unsafe_identifiers(tmp_path: Path) -> None:
+    with pytest.raises(ValidationError):
+        GoalRequest(loop_id="../escape", objective="Valid objective", repo_path=tmp_path / "repo")
+
+    with pytest.raises(ValidationError):
+        GoalRequest(loop_id="bad id", objective="Valid objective", repo_path=tmp_path / "repo")
+
+    with pytest.raises(ValidationError):
+        GoalRequest(loop_id=".", objective="Valid objective", repo_path=tmp_path / "repo")
+
+    with pytest.raises(ValidationError):
+        GoalRequest(loop_id="safe_loop", objective="   ", repo_path=tmp_path / "repo")
+
+    with pytest.raises(ValidationError):
+        LoopContract(loop_id="../escape", objective="Valid objective", repo_path=tmp_path / "repo")
+
+
 def test_codex_cli_runner_is_constructible() -> None:
     runner = CodexCliRunner(model="test-model")
     assert runner.model == "test-model"
@@ -118,6 +161,8 @@ def test_duplicate_callback_is_idempotent(tmp_path: Path) -> None:
     controller.create_loop(contract)
     state = store.load_state(contract.loop_id)
     state.turn = 1
+    state.status = LoopStatus.TRAINING_RUNNING
+    state.last_run_id = "run_same"
     store.save_state(state, contract)
     payload = CallbackPayload(
         loop_id=contract.loop_id,
@@ -137,6 +182,45 @@ def test_duplicate_callback_is_idempotent(tmp_path: Path) -> None:
     assert "run.callback.duplicate" in event_types
 
 
+def test_direct_callback_requires_active_matching_run(tmp_path: Path) -> None:
+    contract = make_contract(tmp_path, target=0.6, max_turns=2)
+    store = StateStore(tmp_path / "state.sqlite3")
+    controller = LoopController(store)
+    controller.create_loop(contract)
+    payload = CallbackPayload(
+        loop_id=contract.loop_id,
+        run_id="run_0001",
+        turn_id="turn_0001",
+        status=RunStatus.SUCCEEDED,
+        metrics={"score": 0.99},
+    )
+
+    with pytest.raises(ValueError, match="no active run is waiting"):
+        controller.handle_callback(contract, payload)
+
+    state = store.load_state(contract.loop_id)
+    assert state.best_metric is None
+    assert store.list_events(contract.loop_id)[-1]["event_type"] == "loop.created"
+
+
+def test_collect_callback_requires_active_matching_run_before_file_read(tmp_path: Path) -> None:
+    contract = make_async_contract(tmp_path, target=0.6, max_turns=2)
+    store = StateStore(tmp_path / "state.sqlite3")
+    controller = LoopController(store)
+    controller.create_loop(contract)
+
+    with pytest.raises(ValueError, match="no active run is waiting"):
+        controller.collect_callback_file(contract, "../outside")
+
+    waiting = controller.run_one_turn(contract)
+    assert waiting.last_run_id == "run_0001"
+
+    with pytest.raises(ValueError, match="does not match active run"):
+        controller.collect_callback_file(contract, "../outside")
+
+    assert not (contract.artifact_root / "outside_callback.json").exists()
+
+
 def test_async_step_waits_for_callback_then_collects(tmp_path: Path) -> None:
     contract = make_async_contract(tmp_path, target=0.6, max_turns=2)
     store = StateStore(tmp_path / "state.sqlite3")
@@ -149,6 +233,13 @@ def test_async_step_waits_for_callback_then_collects(tmp_path: Path) -> None:
     manifest = contract.artifact_root / "runs" / "run_0001_manifest.json"
     callback_file = contract.artifact_root / "runs" / "run_0001_callback.json"
     assert manifest.exists()
+    manifest_payload = manifest.read_text(encoding="utf-8")
+    assert '"owner": "local_subprocess"' in manifest_payload
+    assert '"wake_path":' in manifest_payload
+    assert '"codex_control": "released"' in manifest_payload
+    assert waiting.last_decision == "operational_pause"
+    event_types = [event["event_type"] for event in store.list_events(contract.loop_id)]
+    assert "loop.operational_pause" in event_types
 
     for _ in range(50):
         if callback_file.exists():
@@ -162,6 +253,83 @@ def test_async_step_waits_for_callback_then_collects(tmp_path: Path) -> None:
     assert final.status == LoopStatus.COMPLETED
     assert final.best_metric is not None
     assert final.best_metric >= 0.6
+    manifest_after = manifest.read_text(encoding="utf-8")
+    assert '"status": "succeeded"' in manifest_after
+    assert '"callback_processed": true' in manifest_after
+
+
+class BrokenAsyncTaskRunner:
+    def validate(self, contract: LoopContract) -> tuple[bool, str]:
+        return True, "ok"
+
+    def launch_training_async(self, contract: LoopContract, turn_id: str, run_id: str) -> Path:
+        manifest_path = contract.artifact_root / "runs" / f"{run_id}_manifest.json"
+        write_json(manifest_path, {"run_id": run_id, "turn_id": turn_id, "status": "running"})
+        return manifest_path
+
+
+def test_async_operational_pause_requires_owner_and_wake_path(tmp_path: Path) -> None:
+    contract = make_async_contract(tmp_path, target=0.6, max_turns=2)
+    store = StateStore(tmp_path / "state.sqlite3")
+    controller = LoopController(store, task_runner=BrokenAsyncTaskRunner())
+    controller.create_loop(contract)
+
+    state = controller.run_one_turn(contract)
+
+    assert state.status == LoopStatus.FAILED
+    assert state.last_decision == "failed_needs_action"
+    event_types = [event["event_type"] for event in store.list_events(contract.loop_id)]
+    assert "run.launch_failed" in event_types
+    assert "loop.operational_pause" not in event_types
+
+
+def test_waiting_callback_cannot_be_paused_and_remains_collectable(tmp_path: Path) -> None:
+    contract = make_async_contract(tmp_path, target=0.6, max_turns=2)
+    store = StateStore(tmp_path / "state.sqlite3")
+    controller = LoopController(store)
+    controller.create_loop(contract)
+
+    waiting = controller.run_one_turn(contract)
+    assert waiting.status == LoopStatus.WAITING_CALLBACK
+
+    with pytest.raises(ValueError, match="cannot pause while waiting_callback"):
+        controller.pause_loop(contract)
+
+    state_after_pause_attempt = store.load_state(contract.loop_id)
+    assert state_after_pause_attempt.status == LoopStatus.WAITING_CALLBACK
+    event_types = [event["event_type"] for event in store.list_events(contract.loop_id)]
+    assert "loop.pause.rejected" in event_types
+
+    callback_file = contract.artifact_root / "runs" / "run_0001_callback.json"
+    for _ in range(50):
+        if callback_file.exists():
+            break
+        import time
+
+        time.sleep(0.05)
+    assert callback_file.exists()
+
+    final = controller.collect_callback_file(contract)
+    assert final.status == LoopStatus.COMPLETED
+
+
+def test_cancel_waiting_callback_records_external_owner_boundary(tmp_path: Path) -> None:
+    contract = make_async_contract(tmp_path, target=0.6, max_turns=2)
+    store = StateStore(tmp_path / "state.sqlite3")
+    controller = LoopController(store)
+    controller.create_loop(contract)
+    controller.run_one_turn(contract)
+
+    cancelled = controller.cancel_loop(contract)
+
+    assert cancelled.status == LoopStatus.CANCELLED
+    events = store.list_events(contract.loop_id)
+    cancel_event = next(event for event in events if event["event_type"] == "loop.cancelled")
+    assert cancel_event["payload"]["external_task_control"] == "not_terminated"
+    assert cancel_event["payload"]["owner"] == "local_subprocess"
+    manifest = (contract.artifact_root / "runs" / "run_0001_manifest.json").read_text(encoding="utf-8")
+    assert '"orchestrator_status": "cancelled"' in manifest
+    assert '"external_task_control": "not_terminated"' in manifest
 
 
 def test_pause_resume_cancel_lifecycle(tmp_path: Path) -> None:

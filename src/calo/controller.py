@@ -6,7 +6,7 @@ from pathlib import Path
 from .artifacts import ensure_artifact_dirs, read_json, write_json, write_text
 from .codex_runner import CodexRunner, LocalDeterministicCodexRunner
 from .git_adapter import GitAdapter
-from .models import CallbackPayload, LoopContract, LoopState, LoopStatus
+from .models import CallbackPayload, Decision, LoopContract, LoopState, LoopStatus, utc_now
 from .policy import PolicyEngine
 from .store import StateStore
 from .task_runner import TaskRunner, write_fake_training_script
@@ -46,12 +46,22 @@ class LoopController:
 
     def run_until_done(self, contract: LoopContract) -> LoopState:
         state = self.store.load_state(contract.loop_id)
-        while state.status not in {LoopStatus.COMPLETED, LoopStatus.FAILED, LoopStatus.CANCELLED, LoopStatus.PAUSED, LoopStatus.REVIEW_REQUIRED}:
+        stop_statuses = {
+            LoopStatus.COMPLETED,
+            LoopStatus.FAILED,
+            LoopStatus.CANCELLED,
+            LoopStatus.PAUSED,
+            LoopStatus.REVIEW_REQUIRED,
+            LoopStatus.WAITING_CALLBACK,
+        }
+        while state.status not in stop_statuses:
             state = self.run_one_turn(contract, state)
         return state
 
     def run_one_turn(self, contract: LoopContract, state: LoopState | None = None) -> LoopState:
         state = state or self.store.load_state(contract.loop_id)
+        if state.status != LoopStatus.READY:
+            raise ValueError(f"cannot run a turn while loop status is {state.status}")
         state.turn += 1
         turn_id = f"turn_{state.turn:04d}"
         evidence = self._build_evidence(contract, state, turn_id)
@@ -109,12 +119,50 @@ class LoopController:
         self._save(contract, state, "run.started", {"turn_id": turn_id, "run_id": run_id})
         if contract.execution_mode == "async":
             manifest_path = self.task_runner.launch_training_async(contract, turn_id, run_id)
+            manifest = read_json(manifest_path)
+            owner = manifest.get("owner")
+            wake_path = manifest.get("wake_path") or manifest.get("callback_file")
+            if not owner or not wake_path:
+                state.status = LoopStatus.FAILED
+                state.last_decision = Decision.FAILED_NEEDS_ACTION
+                self._save(
+                    contract,
+                    state,
+                    "run.launch_failed",
+                    {
+                        "turn_id": turn_id,
+                        "run_id": run_id,
+                        "reason": "async run manifest must include owner and wake_path before operational pause",
+                        "manifest_path": str(manifest_path),
+                    },
+                )
+                return state
             state.status = LoopStatus.WAITING_CALLBACK
+            state.last_decision = Decision.OPERATIONAL_PAUSE
             self._save(
                 contract,
                 state,
                 "run.launched_async",
-                {"turn_id": turn_id, "run_id": run_id, "manifest_path": str(manifest_path)},
+                {
+                    "turn_id": turn_id,
+                    "run_id": run_id,
+                    "manifest_path": str(manifest_path),
+                    "owner": owner,
+                    "wake_path": wake_path,
+                    "codex_control": manifest.get("codex_control", "released"),
+                },
+            )
+            self.store.add_event(
+                contract.loop_id,
+                "loop.operational_pause",
+                {
+                    "turn_id": turn_id,
+                    "run_id": run_id,
+                    "owner": owner,
+                    "wake_path": wake_path,
+                    "codex_control": manifest.get("codex_control", "released"),
+                    "reason": "external owner accepted long-running work; Codex turn is not monitoring",
+                },
             )
             return state
         callback = self.task_runner.run_training_sync(contract, turn_id, run_id)
@@ -125,11 +173,33 @@ class LoopController:
         target_run_id = run_id or state.last_run_id
         if target_run_id is None:
             raise ValueError("no run_id available for callback collection")
+        if state.last_run_id is None:
+            raise ValueError("no active run is waiting for a callback")
+        if target_run_id != state.last_run_id:
+            raise ValueError(f"callback run_id {target_run_id} does not match active run {state.last_run_id}")
+        if state.status not in {LoopStatus.TRAINING_RUNNING, LoopStatus.WAITING_CALLBACK}:
+            raise ValueError(f"cannot collect callback while loop status is {state.status}")
         callback = self.task_runner.read_callback_file(contract, target_run_id)
+        if callback.loop_id != contract.loop_id:
+            raise ValueError(f"callback loop_id {callback.loop_id} does not match {contract.loop_id}")
+        if callback.run_id != target_run_id:
+            raise ValueError(f"callback run_id {callback.run_id} does not match {target_run_id}")
+        if state.last_run_id is not None and target_run_id == state.last_run_id and callback.turn_id != f"turn_{state.turn:04d}":
+            raise ValueError(f"callback turn_id {callback.turn_id} does not match current turn {state.turn:04d}")
         return self.handle_callback(contract, callback)
 
     def pause_loop(self, contract: LoopContract) -> LoopState:
         state = self.store.load_state(contract.loop_id)
+        if state.status == LoopStatus.WAITING_CALLBACK:
+            self.store.add_event(
+                contract.loop_id,
+                "loop.pause.rejected",
+                {
+                    "run_id": state.last_run_id,
+                    "reason": "loop is already in operational pause; collect the callback or cancel orchestration instead",
+                },
+            )
+            raise ValueError("cannot pause while waiting_callback; Codex control is already released")
         state.status = LoopStatus.PAUSED
         self._save(contract, state, "loop.paused", {})
         return state
@@ -143,15 +213,40 @@ class LoopController:
 
     def cancel_loop(self, contract: LoopContract) -> LoopState:
         state = self.store.load_state(contract.loop_id)
+        payload: dict = {}
+        if state.status in {LoopStatus.TRAINING_RUNNING, LoopStatus.WAITING_CALLBACK} and state.last_run_id:
+            manifest_path = contract.artifact_root / "runs" / f"{state.last_run_id}_manifest.json"
+            if manifest_path.exists():
+                manifest = read_json(manifest_path)
+                manifest.update(
+                    {
+                        "orchestrator_status": "cancelled",
+                        "external_task_control": "not_terminated",
+                        "cancelled_at": utc_now(),
+                    }
+                )
+                write_json(manifest_path, manifest)
+                payload = {
+                    "run_id": state.last_run_id,
+                    "owner": manifest.get("owner"),
+                    "wake_path": manifest.get("wake_path") or manifest.get("callback_file"),
+                    "external_task_control": "not_terminated",
+                    "reason": "orchestrator cancelled; external TaskRun remains owned outside Codex",
+                }
         state.status = LoopStatus.CANCELLED
-        self._save(contract, state, "loop.cancelled", {})
+        self._save(contract, state, "loop.cancelled", payload)
         return state
 
     def handle_callback(self, contract: LoopContract, callback: CallbackPayload) -> LoopState:
         state = self.store.load_state(contract.loop_id)
-        if not self.store.claim_callback(contract.loop_id, callback.run_id, callback.model_dump(mode="json")):
+        if self.store.has_callback(contract.loop_id, callback.run_id):
             self.store.add_event(contract.loop_id, "run.callback.duplicate", {"run_id": callback.run_id})
             return state
+        self._validate_callback(contract, state, callback)
+        if not self.store.claim_callback(contract.loop_id, callback.run_id, callback.model_dump(mode="json")):
+            self.store.add_event(contract.loop_id, "run.callback.duplicate", {"run_id": callback.run_id})
+            return self.store.load_state(contract.loop_id)
+        self._mark_run_manifest_callback(contract, callback)
         metric = callback.metrics.get(contract.target_metric)
         if metric is not None:
             if state.best_metric is None or metric > state.best_metric + contract.iteration_limits.min_delta:
@@ -171,6 +266,37 @@ class LoopController:
             self._write_final_report(contract, state, policy.reason)
         self._save(contract, state, "loop.callback.handled", {"turn_id": turn_id, "decision": policy.decision})
         return state
+
+    def _validate_callback(self, contract: LoopContract, state: LoopState, callback: CallbackPayload) -> None:
+        if callback.loop_id != contract.loop_id:
+            raise ValueError(f"callback loop_id {callback.loop_id} does not match {contract.loop_id}")
+        if state.last_run_id is None:
+            raise ValueError("no active run is waiting for a callback")
+        if callback.run_id != state.last_run_id:
+            raise ValueError(f"callback run_id {callback.run_id} does not match active run {state.last_run_id}")
+        expected_turn_id = f"turn_{state.turn:04d}"
+        if callback.turn_id != expected_turn_id:
+            raise ValueError(f"callback turn_id {callback.turn_id} does not match current turn {expected_turn_id}")
+        allowed_statuses = {LoopStatus.TRAINING_RUNNING, LoopStatus.WAITING_CALLBACK}
+        if state.status not in allowed_statuses:
+            raise ValueError(f"cannot handle callback while loop status is {state.status}")
+
+    def _mark_run_manifest_callback(self, contract: LoopContract, callback: CallbackPayload) -> None:
+        manifest_path = contract.artifact_root / "runs" / f"{callback.run_id}_manifest.json"
+        if not manifest_path.exists():
+            return
+        manifest = read_json(manifest_path)
+        manifest.update(
+            {
+                "status": callback.status.value,
+                "callback_processed": True,
+                "completed_at": utc_now(),
+                "metrics": callback.metrics,
+                "summary": callback.summary,
+                "error": callback.error,
+            }
+        )
+        write_json(manifest_path, manifest)
 
     def _build_evidence(
         self,

@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from pathlib import Path
+
+from .artifacts import read_json
 from .models import LoopContract, LoopState, LoopSummary
 from .store import StateStore
 
@@ -10,6 +13,26 @@ def build_loop_summary(store: StateStore, state: LoopState, contract: LoopContra
     metric_percent = None
     if state.best_metric is not None and contract.target_value:
         metric_percent = max(0, min(100, round((state.best_metric / contract.target_value) * 100)))
+    run_owner = None
+    wake_path = None
+    run_manifest_path = None
+    run_stdout_path = None
+    run_status = None
+    callback_ready = None
+    callback_processed = None
+    codex_control = None
+    if state.last_run_id:
+        manifest_path = contract.artifact_root / "runs" / f"{state.last_run_id}_manifest.json"
+        if manifest_path.exists():
+            manifest = read_json(manifest_path)
+            run_manifest_path = str(manifest_path)
+            run_owner = manifest.get("owner")
+            wake_path = manifest.get("wake_path") or manifest.get("callback_file")
+            run_stdout_path = manifest.get("stdout_file")
+            run_status = manifest.get("status")
+            callback_processed = bool(manifest.get("callback_processed"))
+            callback_ready = bool(wake_path) and Path(wake_path).exists() and not callback_processed
+            codex_control = manifest.get("codex_control")
     return LoopSummary(
         loop_id=state.loop_id,
         objective=contract.objective,
@@ -26,6 +49,14 @@ def build_loop_summary(store: StateStore, state: LoopState, contract: LoopContra
         updated_at=state.updated_at,
         repo_path=str(contract.repo_path),
         execution_mode=contract.execution_mode,
+        run_owner=run_owner,
+        wake_path=wake_path,
+        run_manifest_path=run_manifest_path,
+        run_stdout_path=run_stdout_path,
+        run_status=run_status,
+        callback_ready=callback_ready,
+        callback_processed=callback_processed,
+        codex_control=codex_control,
         recent_events=store.recent_events(state.loop_id),
     )
 

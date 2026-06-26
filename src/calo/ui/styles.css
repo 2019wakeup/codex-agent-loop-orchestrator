@@ -187,6 +187,146 @@ h2 {
 .loop-list {
   display: flex;
   flex-direction: column;
+  border-top: 1px solid var(--line);
+}
+
+.goal-form {
+  display: grid;
+  gap: 10px;
+  padding: 12px 14px 14px;
+  background: #fbfcfd;
+}
+
+.field-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 0.9fr);
+  gap: 10px;
+}
+
+.field-block {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.field-block label,
+.check-row {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.field-block input,
+.field-block textarea,
+.field-block select {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+}
+
+.field-block input,
+.field-block select {
+  height: 34px;
+  padding: 0 9px;
+}
+
+.field-block textarea {
+  min-height: 72px;
+  padding: 8px 9px;
+  resize: vertical;
+  line-height: 1.4;
+}
+
+.field-block input:focus,
+.field-block textarea:focus,
+.field-block select:focus {
+  border-color: var(--accent);
+  outline: 2px solid rgba(37, 99, 235, 0.22);
+}
+
+.wide-field {
+  grid-column: 1 / -1;
+}
+
+.advanced-settings {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+.advanced-settings summary {
+  padding: 8px 10px;
+  color: var(--accent-strong);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.advanced-settings .field-grid {
+  padding: 0 10px 10px;
+}
+
+.form-row,
+.check-row,
+.check-group {
+  display: flex;
+  align-items: center;
+}
+
+.form-row {
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.check-row {
+  gap: 7px;
+}
+
+.check-group {
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.check-row input {
+  width: 15px;
+  height: 15px;
+}
+
+.form-message {
+  min-height: 18px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.form-message.success {
+  color: var(--ok);
+}
+
+.form-message.error {
+  color: var(--bad);
+}
+
+.action-message {
+  min-height: 18px;
+  margin-top: 8px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.action-message.error {
+  color: var(--bad);
+}
+
+.action-message.success {
+  color: var(--ok);
 }
 
 .loop-row {
@@ -500,7 +640,8 @@ h2 {
   }
 
   .phase-panel,
-  .key-grid {
+  .key-grid,
+  .field-grid {
     grid-template-columns: 1fr;
   }
 

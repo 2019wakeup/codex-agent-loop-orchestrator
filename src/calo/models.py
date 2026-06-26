@@ -5,7 +5,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 def utc_now() -> str:
@@ -68,6 +68,40 @@ class WebhookSecurity(BaseModel):
     timestamp_tolerance_seconds: int = 300
 
 
+class GoalRequest(BaseModel):
+    objective: str = Field(min_length=1)
+    repo_path: Path
+    loop_id: str | None = None
+    target_metric: str = "score"
+    target_value: float = 0.8
+    execution_mode: Literal["sync", "async"] = "sync"
+    max_turns: int = 3
+    patience: int | None = None
+    min_delta: float = 0.001
+    validation_command: str = "python -m py_compile target_app.py"
+    task_command: str = "python fake_train.py --callback-file {callback_file} --run-id {run_id} --turn-id {turn_id}"
+    require_diff_review: bool = False
+    auto_commit: bool = True
+
+    @field_validator("objective")
+    @classmethod
+    def objective_must_not_be_blank(cls, value: str) -> str:
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError("objective must not be blank")
+        return stripped
+
+    @field_validator("loop_id")
+    @classmethod
+    def loop_id_must_be_safe(cls, value: str | None) -> str | None:
+        if value is None:
+            return value
+        allowed = set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_.-")
+        if value in {".", ".."} or not value or any(char not in allowed for char in value):
+            raise ValueError("loop_id must be a single path-safe token")
+        return value
+
+
 class LoopContract(BaseModel):
     loop_id: str
     objective: str
@@ -85,6 +119,22 @@ class LoopContract(BaseModel):
     @property
     def artifact_root(self) -> Path:
         return self.repo_path / ".codex" / "agent-loop" / self.loop_id
+
+    @field_validator("objective")
+    @classmethod
+    def objective_must_not_be_blank(cls, value: str) -> str:
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError("objective must not be blank")
+        return stripped
+
+    @field_validator("loop_id")
+    @classmethod
+    def loop_id_must_be_safe(cls, value: str) -> str:
+        allowed = set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_.-")
+        if value in {".", ".."} or not value or any(char not in allowed for char in value):
+            raise ValueError("loop_id must be a single path-safe token")
+        return value
 
 
 class LoopState(BaseModel):
@@ -184,4 +234,12 @@ class LoopSummary(BaseModel):
     updated_at: str
     repo_path: str
     execution_mode: Literal["sync", "async"]
+    run_owner: str | None = None
+    wake_path: str | None = None
+    run_manifest_path: str | None = None
+    run_stdout_path: str | None = None
+    run_status: str | None = None
+    callback_ready: bool | None = None
+    callback_processed: bool | None = None
+    codex_control: str | None = None
     recent_events: list[LoopEvent] = Field(default_factory=list)

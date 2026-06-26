@@ -24,6 +24,84 @@
           <h2>Loop Queue</h2>
           <span id="loop-count" class="muted">0</span>
         </div>
+        <form id="goal-form" class="goal-form">
+          <div class="field-block">
+            <label for="goal-objective">Goal brief</label>
+            <textarea id="goal-objective" name="objective" rows="3" required></textarea>
+          </div>
+          <div class="field-grid">
+            <div class="field-block">
+              <label for="goal-repo">Repo path</label>
+              <input id="goal-repo" name="repo_path" type="text" required />
+            </div>
+            <div class="field-block">
+              <label for="goal-loop-id">Loop ID</label>
+              <input id="goal-loop-id" name="loop_id" type="text" placeholder="optional" />
+            </div>
+            <div class="field-block">
+              <label for="goal-target">Target score</label>
+              <input id="goal-target" name="target_value" type="number" min="0" step="0.01" value="0.7" required />
+            </div>
+            <div class="field-block">
+              <label for="goal-turns">Max turns</label>
+              <input id="goal-turns" name="max_turns" type="number" min="1" step="1" value="3" required />
+            </div>
+          </div>
+          <details class="advanced-settings">
+            <summary>Advanced settings</summary>
+            <div class="field-grid">
+              <div class="field-block">
+                <label for="goal-target-metric">Target metric</label>
+                <input id="goal-target-metric" name="target_metric" type="text" value="score" />
+              </div>
+              <div class="field-block">
+                <label for="goal-patience">Patience</label>
+                <input id="goal-patience" name="patience" type="number" min="1" step="1" placeholder="max turns" />
+              </div>
+              <div class="field-block">
+                <label for="goal-min-delta">Min delta</label>
+                <input id="goal-min-delta" name="min_delta" type="number" min="0" step="0.001" value="0.001" />
+              </div>
+              <div class="field-block">
+                <label for="goal-runner">Runner</label>
+                <select id="goal-runner" name="runner">
+                  <option value="local">local</option>
+                  <option value="codex-cli">codex-cli</option>
+                </select>
+              </div>
+              <div class="field-block">
+                <label for="goal-model">Model</label>
+                <input id="goal-model" name="model" type="text" placeholder="runner default" />
+              </div>
+              <div class="field-block">
+                <label for="goal-validation-command">Validation command</label>
+                <input id="goal-validation-command" name="validation_command" type="text" value="python -m py_compile target_app.py" />
+              </div>
+              <div class="field-block wide-field">
+                <label for="goal-task-command">TaskRun command</label>
+                <input id="goal-task-command" name="task_command" type="text" value="python fake_train.py --callback-file {callback_file} --run-id {run_id} --turn-id {turn_id}" />
+              </div>
+            </div>
+          </details>
+          <div class="form-row">
+            <div class="check-group">
+              <label class="check-row" for="goal-async">
+                <input id="goal-async" name="async" type="checkbox" />
+                <span>Async mode</span>
+              </label>
+              <label class="check-row" for="goal-review">
+                <input id="goal-review" name="require_diff_review" type="checkbox" />
+                <span>Diff review</span>
+              </label>
+              <label class="check-row" for="goal-auto-commit">
+                <input id="goal-auto-commit" name="auto_commit" type="checkbox" checked />
+                <span>Auto commit</span>
+              </label>
+            </div>
+            <button id="goal-submit" class="button primary" type="submit">Create loop</button>
+          </div>
+          <div id="goal-message" class="form-message" role="status" aria-live="polite"></div>
+        </form>
         <div id="loops" class="loop-list"></div>
       </section>
 
