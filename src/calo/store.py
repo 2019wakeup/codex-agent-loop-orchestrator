@@ -5,8 +5,7 @@ import sqlite3
 from pathlib import Path
 from typing import Any
 
-from .models import LoopContract, LoopEvent
-from .models import LoopState, utc_now
+from .models import LoopContract, LoopEvent, LoopState, TaskGraph, TaskRunRecord, utc_now
 
 
 class StateStore:
@@ -42,6 +41,20 @@ class StateStore:
                   run_id text not null,
                   payload_json text not null,
                   created_at text not null,
+                  primary key(loop_id, run_id)
+                );
+                create table if not exists task_graphs (
+                  loop_id text not null,
+                  turn_id text not null,
+                  graph_json text not null,
+                  updated_at text not null,
+                  primary key(loop_id, turn_id)
+                );
+                create table if not exists task_runs (
+                  loop_id text not null,
+                  run_id text not null,
+                  record_json text not null,
+                  updated_at text not null,
                   primary key(loop_id, run_id)
                 );
                 """
@@ -167,3 +180,69 @@ class StateStore:
         ]
         events.reverse()
         return events
+
+    def save_task_graph(self, graph: TaskGraph) -> None:
+        graph.updated_at = utc_now()
+        with self._connect() as con:
+            con.execute(
+                """
+                insert into task_graphs(loop_id, turn_id, graph_json, updated_at)
+                values (?, ?, ?, ?)
+                on conflict(loop_id, turn_id) do update set
+                  graph_json=excluded.graph_json,
+                  updated_at=excluded.updated_at
+                """,
+                (graph.loop_id, graph.turn_id, graph.model_dump_json(), graph.updated_at),
+            )
+
+    def latest_task_graph(self, loop_id: str) -> TaskGraph | None:
+        with self._connect() as con:
+            row = con.execute(
+                """
+                select graph_json
+                from task_graphs
+                where loop_id = ?
+                order by updated_at desc
+                limit 1
+                """,
+                (loop_id,),
+            ).fetchone()
+        return None if row is None else TaskGraph.model_validate_json(row["graph_json"])
+
+    def list_task_graphs(self, loop_id: str) -> list[TaskGraph]:
+        with self._connect() as con:
+            rows = con.execute(
+                "select graph_json from task_graphs where loop_id = ? order by updated_at",
+                (loop_id,),
+            ).fetchall()
+        return [TaskGraph.model_validate_json(row["graph_json"]) for row in rows]
+
+    def save_task_run(self, record: TaskRunRecord) -> None:
+        record.updated_at = utc_now()
+        with self._connect() as con:
+            con.execute(
+                """
+                insert into task_runs(loop_id, run_id, record_json, updated_at)
+                values (?, ?, ?, ?)
+                on conflict(loop_id, run_id) do update set
+                  record_json=excluded.record_json,
+                  updated_at=excluded.updated_at
+                """,
+                (record.loop_id, record.run_id, record.model_dump_json(), record.updated_at),
+            )
+
+    def load_task_run(self, loop_id: str, run_id: str) -> TaskRunRecord | None:
+        with self._connect() as con:
+            row = con.execute(
+                "select record_json from task_runs where loop_id = ? and run_id = ?",
+                (loop_id, run_id),
+            ).fetchone()
+        return None if row is None else TaskRunRecord.model_validate_json(row["record_json"])
+
+    def list_task_runs(self, loop_id: str) -> list[TaskRunRecord]:
+        with self._connect() as con:
+            rows = con.execute(
+                "select record_json from task_runs where loop_id = ? order by updated_at",
+                (loop_id,),
+            ).fetchall()
+        return [TaskRunRecord.model_validate_json(row["record_json"]) for row in rows]

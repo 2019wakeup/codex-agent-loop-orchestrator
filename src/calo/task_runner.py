@@ -62,6 +62,7 @@ class TaskRunner:
             text=True,
             stdout=out,
             stderr=subprocess.STDOUT,
+            start_new_session=True,
         )
         manifest = {
             "loop_id": contract.loop_id,
@@ -69,6 +70,7 @@ class TaskRunner:
             "turn_id": turn_id,
             "owner": "local_subprocess",
             "pid": process.pid,
+            "process_group_id": process.pid,
             "command": command,
             "wake_path": str(callback_file),
             "callback_file": str(callback_file),

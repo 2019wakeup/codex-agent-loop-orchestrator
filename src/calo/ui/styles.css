@@ -526,6 +526,80 @@ h2 {
   overflow: hidden;
 }
 
+.task-graph,
+.task-runs,
+.artifact-list {
+  display: grid;
+  gap: 8px;
+}
+
+.task-graph,
+.task-runs {
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfcfd;
+}
+
+.task-graph-head,
+.task-run-main,
+.artifact-entry summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.task-graph-head span,
+.task-node span,
+.artifact-entry small {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.task-node,
+.task-run,
+.artifact-entry {
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+.task-node p {
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.artifact-entry summary {
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 750;
+}
+
+.artifact-entry summary span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.artifact-entry pre {
+  max-height: 180px;
+  margin: 10px 0 0;
+  overflow: auto;
+  padding: 10px;
+  border-radius: 6px;
+  background: #111827;
+  color: #f9fafb;
+  font-size: 12px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+}
+
 .event {
   display: grid;
   grid-template-columns: 150px 1fr;

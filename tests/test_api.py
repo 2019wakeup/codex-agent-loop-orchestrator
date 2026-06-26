@@ -154,6 +154,18 @@ def test_api_step_and_collect_callback_support_web_async_flow(tmp_path: Path) ->
     assert summary["run_status"] == "succeeded"
     assert summary["callback_ready"] is False
     assert summary["callback_processed"] is True
+    assert summary["task_graph"]["turn_id"] == "turn_0001"
+    assert summary["task_runs"][0]["status"] == "succeeded"
+    assert any(artifact["path"].startswith("task_graph/") for artifact in summary["artifacts"])
+
+    tasks = client.get("/api/v1/loops/web_async_loop/tasks")
+    assert tasks.status_code == 200
+    assert tasks.json()["task_graphs"][0]["nodes"][0]["status"] == "approved"
+    assert tasks.json()["task_runs"][0]["callback_processed"] is True
+
+    artifacts = client.get("/api/v1/loops/web_async_loop/artifacts")
+    assert artifacts.status_code == 200
+    assert any(entry["path"] == "task_graph/turn_0001.json" for entry in artifacts.json())
 
 
 def test_api_rejects_double_step_while_waiting_callback(tmp_path: Path) -> None:
@@ -182,6 +194,28 @@ def test_api_rejects_double_step_while_waiting_callback(tmp_path: Path) -> None:
     run_dir = tmp_path / "double_step_repo" / ".codex" / "agent-loop" / "double_step_loop" / "runs"
     assert (run_dir / "run_0001_manifest.json").exists()
     assert not (run_dir / "run_0002_manifest.json").exists()
+
+
+def test_api_can_terminate_owned_local_task_run(tmp_path: Path) -> None:
+    app = create_app(tmp_path / "api.sqlite3")
+    client = TestClient(app)
+    goal = {
+        "loop_id": "terminate_loop",
+        "objective": "Terminate an owned local TaskRun",
+        "repo_path": str(tmp_path / "terminate_repo"),
+        "target_value": 0.6,
+        "execution_mode": "async",
+        "task_command": "python -c \"import time; time.sleep(30)\" --callback-file {callback_file} --run-id {run_id} --turn-id {turn_id}",
+    }
+    assert client.post("/api/v1/goals", json=goal).status_code == 200
+    assert client.post("/api/v1/loops/terminate_loop/step").json()["status"] == "waiting_callback"
+
+    response = client.post("/api/v1/loops/terminate_loop/runs/run_0001/terminate")
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "cancelled"
+    assert response.json()["external_task_control"] in {"terminated", "already_exited"}
+    assert client.get("/api/v1/loops/terminate_loop").json()["status"] == "cancelled"
 
 
 def test_api_collect_callback_reports_not_ready(tmp_path: Path) -> None:
@@ -300,6 +334,11 @@ def test_web_ui_static_routes(tmp_path: Path) -> None:
     assert "runnerQuery" in app_js
     assert 'status !== "waiting_callback"' in app_js
     assert "external TaskRun was not terminated" in app_js
+    assert "renderTaskGraph" in app_js
+    assert "renderTaskRuns" in app_js
+    assert "renderArtifacts" in app_js
+    assert "Terminate TaskRun" in app_js
+    assert "/terminate" in app_js
     assert "Action failed" not in app_js
     assert "failed:" in app_js
     assert "succeeded:" in app_js
@@ -314,6 +353,8 @@ def test_web_ui_static_routes(tmp_path: Path) -> None:
     assert ".loop-row" in css.text
     assert ".phase-panel" in css.text
     assert ".goal-form" in css.text
+    assert ".artifact-list" in css.text
+    assert ".task-graph" in css.text
 
 
 def test_web_ui_context_defaults_to_served_workspace(tmp_path: Path) -> None:

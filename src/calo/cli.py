@@ -202,6 +202,18 @@ def cancel(
     typer.echo(state.model_dump_json(indent=2))
 
 
+@app.command("terminate-run")
+def terminate_run(
+    loop_id: str = typer.Argument(...),
+    workspace: Path = typer.Option(..., help="State workspace used when the loop was created."),
+    run_id: str | None = typer.Option(None, help="TaskRun id to terminate. Defaults to last run."),
+) -> None:
+    controller = _controller(workspace)
+    contract = controller.load_contract(loop_id)
+    record = controller.terminate_task_run(contract, run_id)
+    typer.echo(record.model_dump_json(indent=2))
+
+
 @app.command()
 def status(
     loop_id: str = typer.Argument(...),

@@ -1,12 +1,14 @@
 from __future__ import annotations
 
+import os
+import signal
 import shutil
 from pathlib import Path
 
 from .artifacts import ensure_artifact_dirs, read_json, write_json, write_text
 from .codex_runner import CodexRunner, LocalDeterministicCodexRunner
 from .git_adapter import GitAdapter
-from .models import CallbackPayload, Decision, LoopContract, LoopState, LoopStatus, utc_now
+from .models import CallbackPayload, Decision, LoopContract, LoopState, LoopStatus, TaskGraph, TaskNode, TaskRunRecord, TaskStatus, utc_now
 from .policy import PolicyEngine
 from .store import StateStore
 from .task_runner import TaskRunner, write_fake_training_script
@@ -69,7 +71,12 @@ class LoopController:
         state.status = LoopStatus.PLANNING
         self._save(contract, state, "codex.planner.started", {"turn_id": turn_id})
         plan = self.runner.planner(contract.artifact_root, turn_id, evidence)
-        self.store.add_event(contract.loop_id, "codex.planner.completed", {"turn_id": turn_id})
+        graph = self._record_task_graph(contract, plan)
+        self.store.add_event(
+            contract.loop_id,
+            "codex.planner.completed",
+            {"turn_id": turn_id, "plan_path": str(contract.artifact_root / "plan" / f"{turn_id}.json"), "task_graph_path": graph.artifact_path},
+        )
 
         state.status = LoopStatus.CODEX_RUNNING
         self._save(contract, state, "codex.worker.started", {"turn_id": turn_id})
@@ -116,6 +123,15 @@ class LoopController:
         state.status = LoopStatus.TRAINING_RUNNING
         run_id = f"run_{state.turn:04d}"
         state.last_run_id = run_id
+        self.store.save_task_run(
+            TaskRunRecord(
+                loop_id=contract.loop_id,
+                run_id=run_id,
+                turn_id=turn_id,
+                status=TaskStatus.RUNNING,
+                external_task_control="owned",
+            )
+        )
         self._save(contract, state, "run.started", {"turn_id": turn_id, "run_id": run_id})
         if contract.execution_mode == "async":
             manifest_path = self.task_runner.launch_training_async(contract, turn_id, run_id)
@@ -137,6 +153,21 @@ class LoopController:
                     },
                 )
                 return state
+            self.store.save_task_run(
+                TaskRunRecord(
+                    loop_id=contract.loop_id,
+                    run_id=run_id,
+                    turn_id=turn_id,
+                    status=TaskStatus.RUNNING,
+                    owner=owner,
+                    command=manifest.get("command"),
+                    pid=manifest.get("pid"),
+                    wake_path=wake_path,
+                    stdout_path=manifest.get("stdout_file"),
+                    manifest_path=str(manifest_path),
+                    external_task_control="released",
+                )
+            )
             state.status = LoopStatus.WAITING_CALLBACK
             state.last_decision = Decision.OPERATIONAL_PAUSE
             self._save(
@@ -215,6 +246,7 @@ class LoopController:
         state = self.store.load_state(contract.loop_id)
         payload: dict = {}
         if state.status in {LoopStatus.TRAINING_RUNNING, LoopStatus.WAITING_CALLBACK} and state.last_run_id:
+            task_record = self.store.load_task_run(contract.loop_id, state.last_run_id)
             manifest_path = contract.artifact_root / "runs" / f"{state.last_run_id}_manifest.json"
             if manifest_path.exists():
                 manifest = read_json(manifest_path)
@@ -233,9 +265,62 @@ class LoopController:
                     "external_task_control": "not_terminated",
                     "reason": "orchestrator cancelled; external TaskRun remains owned outside Codex",
                 }
+                if task_record is not None:
+                    task_record.status = TaskStatus.CANCELLED
+                    task_record.external_task_control = "not_terminated"
+                    task_record.callback_processed = False
+                    self.store.save_task_run(task_record)
         state.status = LoopStatus.CANCELLED
         self._save(contract, state, "loop.cancelled", payload)
         return state
+
+    def terminate_task_run(self, contract: LoopContract, run_id: str | None = None) -> TaskRunRecord:
+        state = self.store.load_state(contract.loop_id)
+        target_run_id = run_id or state.last_run_id
+        if target_run_id is None:
+            raise ValueError("no run_id available for termination")
+        if state.last_run_id is not None and target_run_id != state.last_run_id:
+            raise ValueError(f"run_id {target_run_id} does not match active run {state.last_run_id}")
+        record = self.store.load_task_run(contract.loop_id, target_run_id)
+        manifest_path = contract.artifact_root / "runs" / f"{target_run_id}_manifest.json"
+        if record is None and not manifest_path.exists():
+            raise ValueError(f"unknown TaskRun: {target_run_id}")
+        manifest = read_json(manifest_path) if manifest_path.exists() else {}
+        owner = manifest.get("owner") or (record.owner if record else None)
+        pid = manifest.get("process_group_id") or manifest.get("pid") or (record.pid if record else None)
+        if owner != "local_subprocess" or not pid:
+            raise ValueError("only local_subprocess TaskRuns with a recorded pid can be terminated")
+        control = "terminated"
+        try:
+            os.killpg(int(pid), signal.SIGTERM)
+        except ProcessLookupError:
+            control = "already_exited"
+        manifest.update(
+            {
+                "status": "cancelled",
+                "orchestrator_status": "cancelled",
+                "external_task_control": control,
+                "terminated_at": utc_now(),
+            }
+        )
+        if manifest_path.exists():
+            write_json(manifest_path, manifest)
+        if record is None:
+            record = TaskRunRecord(loop_id=contract.loop_id, run_id=target_run_id, turn_id=manifest.get("turn_id", f"turn_{state.turn:04d}"))
+        record.status = TaskStatus.CANCELLED
+        record.owner = owner
+        record.pid = int(pid)
+        record.manifest_path = str(manifest_path)
+        record.external_task_control = control
+        self.store.save_task_run(record)
+        state.status = LoopStatus.CANCELLED
+        self._save(
+            contract,
+            state,
+            "run.termination.requested",
+            {"run_id": target_run_id, "owner": owner, "pid": int(pid), "external_task_control": control},
+        )
+        return record
 
     def handle_callback(self, contract: LoopContract, callback: CallbackPayload) -> LoopState:
         state = self.store.load_state(contract.loop_id)
@@ -260,12 +345,52 @@ class LoopController:
         policy = self.policy.evaluate_after_judge(contract, state, judge, callback)
         state.status = policy.next_status if not policy.should_continue or policy.next_status == LoopStatus.COMPLETED else LoopStatus.READY
         state.last_decision = policy.decision
+        self._mark_task_run_callback(contract, callback)
         self.store.add_event(contract.loop_id, "run.completed", callback.model_dump(mode="json"))
         self.store.add_event(contract.loop_id, "policy.checked", policy.model_dump(mode="json"))
         if state.status == LoopStatus.COMPLETED:
             self._write_final_report(contract, state, policy.reason)
         self._save(contract, state, "loop.callback.handled", {"turn_id": turn_id, "decision": policy.decision})
         return state
+
+    def _record_task_graph(self, contract: LoopContract, plan) -> TaskGraph:
+        graph_path = contract.artifact_root / "task_graph" / f"{plan.turn_id}.json"
+        graph = TaskGraph(
+            loop_id=contract.loop_id,
+            turn_id=plan.turn_id,
+            objective=plan.objective,
+            nodes=[
+                TaskNode(
+                    id=task.id,
+                    turn_id=plan.turn_id,
+                    type=task.type,
+                    target_files=task.target_files,
+                    instruction=task.instruction,
+                    status=TaskStatus.APPROVED,
+                )
+                for task in plan.tasks
+            ],
+            artifact_path=str(graph_path),
+        )
+        write_json(graph_path, graph)
+        self.store.save_task_graph(graph)
+        return graph
+
+    def _mark_task_run_callback(self, contract: LoopContract, callback: CallbackPayload) -> None:
+        record = self.store.load_task_run(contract.loop_id, callback.run_id)
+        if record is None:
+            record = TaskRunRecord(loop_id=contract.loop_id, run_id=callback.run_id, turn_id=callback.turn_id)
+        status_map = {
+            "succeeded": TaskStatus.SUCCEEDED,
+            "failed": TaskStatus.FAILED,
+            "cancelled": TaskStatus.CANCELLED,
+            "timeout": TaskStatus.FAILED,
+            "partial": TaskStatus.FAILED,
+        }
+        record.status = status_map.get(callback.status.value, TaskStatus.FAILED)
+        record.callback_processed = True
+        record.external_task_control = "released"
+        self.store.save_task_run(record)
 
     def _validate_callback(self, contract: LoopContract, state: LoopState, callback: CallbackPayload) -> None:
         if callback.loop_id != contract.loop_id:

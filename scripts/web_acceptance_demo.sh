@@ -104,6 +104,15 @@ summary = get("/api/v1/loops/web_acceptance_loop/summary")
 assert summary["run_status"] == "succeeded"
 assert summary["callback_ready"] is False
 assert summary["callback_processed"] is True
+assert summary["task_graph"]["turn_id"] == "turn_0001"
+assert summary["task_runs"][0]["status"] == "succeeded"
+
+tasks = get("/api/v1/loops/web_acceptance_loop/tasks")
+assert tasks["task_graphs"][0]["nodes"][0]["status"] == "approved"
+assert tasks["task_runs"][0]["callback_processed"] is True
+
+artifacts = get("/api/v1/loops/web_acceptance_loop/artifacts")
+assert any(entry["path"] == "task_graph/turn_0001.json" for entry in artifacts)
 PY
 
 echo "web acceptance demo passed: $WORKSPACE"

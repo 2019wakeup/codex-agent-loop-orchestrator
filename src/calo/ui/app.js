@@ -71,6 +71,93 @@ function metricText(metrics) {
     .join(", ");
 }
 
+function renderTaskGraph(graph) {
+  if (!graph || !graph.nodes || !graph.nodes.length) {
+    return '<div class="empty-timeline">No task graph has been recorded yet.</div>';
+  }
+  return `
+    <div class="task-graph">
+      <div class="task-graph-head">
+        <strong>${escapeHtml(graph.turn_id)}</strong>
+        <span>${escapeHtml(graph.nodes.length)} tasks</span>
+      </div>
+      ${graph.nodes
+        .map(
+          (node) => `
+            <article class="task-node">
+              <div>
+                <strong>${escapeHtml(node.id)}</strong>
+                <span>${escapeHtml(labelize(node.type))}</span>
+              </div>
+              <p>${escapeHtml(node.instruction)}</p>
+              <div class="chip-row">
+                ${renderChips([
+                  { label: "status", value: labelize(node.status) },
+                  { label: "files", value: (node.target_files || []).join(", ") },
+                ])}
+              </div>
+            </article>
+          `
+        )
+        .join("")}
+    </div>
+  `;
+}
+
+function renderTaskRuns(taskRuns) {
+  if (!taskRuns || !taskRuns.length) {
+    return '<div class="empty-timeline">No TaskRuns have been recorded yet.</div>';
+  }
+  return `
+    <div class="task-runs">
+      ${taskRuns
+        .map(
+          (run) => `
+            <article class="task-run">
+              <div class="task-run-main">
+                <strong>${escapeHtml(run.run_id)}</strong>
+                <span class="${statusClass(run.status)}">${escapeHtml(labelize(run.status))}</span>
+              </div>
+              <div class="chip-row">
+                ${renderChips([
+                  { label: "turn", value: run.turn_id },
+                  { label: "owner", value: run.owner },
+                  { label: "pid", value: run.pid },
+                  { label: "control", value: labelize(run.external_task_control) },
+                  { label: "wake", value: run.wake_path },
+                ])}
+              </div>
+            </article>
+          `
+        )
+        .join("")}
+    </div>
+  `;
+}
+
+function renderArtifacts(artifacts) {
+  if (!artifacts || !artifacts.length) {
+    return '<div class="empty-timeline">No artifacts are available yet.</div>';
+  }
+  return `
+    <div class="artifact-list">
+      ${artifacts
+        .map(
+          (artifact) => `
+            <details class="artifact-entry">
+              <summary>
+                <span>${escapeHtml(artifact.path)}</span>
+                <small>${escapeHtml(labelize(artifact.kind))} · ${escapeHtml(formatValue(artifact.size_bytes))} bytes</small>
+              </summary>
+              <pre>${escapeHtml(artifact.preview || "Preview not available for this file type.")}</pre>
+            </details>
+          `
+        )
+        .join("")}
+    </div>
+  `;
+}
+
 function statusInsight(loop) {
   const target = `${loop.target_metric} ${formatValue(loop.target_value)}`;
   const messages = {
@@ -328,6 +415,7 @@ function actionConfig(loop) {
     pause: !terminalStates.has(status) && status !== "paused" && status !== "waiting_callback",
     resume: status === "paused" || status === "review_required",
     cancel: !terminalStates.has(status),
+    terminate: ["training_running", "waiting_callback"].includes(status) && Boolean(loop.last_run_id),
   };
 }
 
@@ -362,8 +450,13 @@ function runnerQuery() {
   return query ? `?${query}` : "";
 }
 
-async function postAction(loopId, action) {
-  const response = await fetch(`/api/v1/loops/${encodeURIComponent(loopId)}/${action}${runnerQuery()}`, { method: "POST" });
+async function postAction(loop, action) {
+  const loopId = encodeURIComponent(loop.loop_id);
+  const path =
+    action === "terminate-run"
+      ? `/api/v1/loops/${loopId}/runs/${encodeURIComponent(loop.last_run_id)}/terminate${runnerQuery()}`
+      : `/api/v1/loops/${loopId}/${action}${runnerQuery()}`;
+  const response = await fetch(path, { method: "POST" });
   if (!response.ok) {
     const text = await response.text();
     throw new Error(text || `${action} failed with HTTP ${response.status}`);
@@ -551,8 +644,15 @@ function renderDetail(loop) {
         <button class="button" data-action="pause" ${actions.pause ? "" : "disabled"}>Pause</button>
         <button class="button" data-action="resume" ${actions.resume ? "" : "disabled"}>Resume</button>
         <button class="button danger" data-action="cancel" ${actions.cancel ? "" : "disabled"}>Cancel</button>
+        <button class="button danger" data-action="terminate-run" ${actions.terminate ? "" : "disabled"}>Terminate TaskRun</button>
       </div>
       <div id="action-message" class="action-message ${escapeHtml(state.actionMessageKind)}" role="status" aria-live="polite">${escapeHtml(state.actionMessage)}</div>
+      <div class="section-title">Task graph</div>
+      ${renderTaskGraph(loop.task_graph)}
+      <div class="section-title">TaskRuns</div>
+      ${renderTaskRuns(loop.task_runs)}
+      <div class="section-title">Artifacts</div>
+      ${renderArtifacts(loop.artifacts)}
       <div class="section-title">Loop timeline</div>
       <div class="event-list">${renderEvents(loop.recent_events || [])}</div>
     </div>
@@ -564,8 +664,8 @@ function renderDetail(loop) {
       actionMessage.textContent = `${button.textContent}...`;
       actionMessage.className = "action-message";
       try {
-        const result = await postAction(loop.loop_id, button.dataset.action);
-        state.actionMessage = `${button.textContent} succeeded: ${labelize(result.status)}.`;
+        const result = await postAction(loop, button.dataset.action);
+        state.actionMessage = `${button.textContent} succeeded: ${labelize(result.status || result.external_task_control)}.`;
         state.actionMessageKind = "success";
         await loadDashboard();
       } catch (error) {

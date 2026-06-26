@@ -61,6 +61,13 @@ def test_demo_loop_reaches_target_and_writes_artifacts(tmp_path: Path) -> None:
     assert (contract.artifact_root / "handoff" / "turn_0001.md").exists()
     assert (contract.artifact_root / "judge" / f"turn_{state.turn:04d}.json").exists()
     assert (contract.artifact_root / "reports" / "final_report.md").exists()
+    graph = store.latest_task_graph(contract.loop_id)
+    assert graph is not None
+    assert graph.nodes[0].status == "approved"
+    assert (contract.artifact_root / "task_graph" / "turn_0001.json").exists()
+    runs = store.list_task_runs(contract.loop_id)
+    assert runs[-1].status == "succeeded"
+    assert runs[-1].callback_processed is True
 
 
 def test_loop_stops_at_max_turns_when_target_unreached(tmp_path: Path) -> None:
@@ -330,6 +337,30 @@ def test_cancel_waiting_callback_records_external_owner_boundary(tmp_path: Path)
     manifest = (contract.artifact_root / "runs" / "run_0001_manifest.json").read_text(encoding="utf-8")
     assert '"orchestrator_status": "cancelled"' in manifest
     assert '"external_task_control": "not_terminated"' in manifest
+
+
+def test_terminate_task_run_can_stop_owned_local_subprocess(tmp_path: Path) -> None:
+    contract = make_async_contract(tmp_path, target=0.6, max_turns=2)
+    contract.commands.train = (
+        "python -c \"import time; time.sleep(30)\" "
+        "--callback-file {callback_file} --run-id {run_id} --turn-id {turn_id}"
+    )
+    store = StateStore(tmp_path / "state.sqlite3")
+    controller = LoopController(store)
+    controller.create_loop(contract)
+    waiting = controller.run_one_turn(contract)
+    assert waiting.status == LoopStatus.WAITING_CALLBACK
+
+    record = controller.terminate_task_run(contract)
+
+    assert record.status == "cancelled"
+    assert record.external_task_control in {"terminated", "already_exited"}
+    state = store.load_state(contract.loop_id)
+    assert state.status == LoopStatus.CANCELLED
+    events = [event["event_type"] for event in store.list_events(contract.loop_id)]
+    assert "run.termination.requested" in events
+    manifest = (contract.artifact_root / "runs" / "run_0001_manifest.json").read_text(encoding="utf-8")
+    assert '"external_task_control":' in manifest
 
 
 def test_pause_resume_cancel_lifecycle(tmp_path: Path) -> None:

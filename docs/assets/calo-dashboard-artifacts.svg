@@ -1,0 +1,55 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="680" viewBox="0 0 1200 680" role="img" aria-labelledby="title desc">
+  <title id="title">CALO Web dashboard with TaskRun and artifacts</title>
+  <desc id="desc">A browser dashboard showing a goal form, loop queue, operational pause state, TaskGraph, TaskRuns and artifacts.</desc>
+  <rect width="1200" height="680" rx="28" fill="#eef1f5"/>
+  <rect x="48" y="44" width="1104" height="592" rx="20" fill="#ffffff" stroke="#d6dbe3"/>
+  <rect x="48" y="44" width="1104" height="68" rx="20" fill="#ffffff"/>
+  <line x1="48" y1="112" x2="1152" y2="112" stroke="#d6dbe3"/>
+  <text x="78" y="86" fill="#1f2933" font-family="Inter, Arial, sans-serif" font-size="22" font-weight="760">Codex Agent Loop Orchestrator</text>
+  <rect x="1000" y="67" width="92" height="28" rx="14" fill="#e7f6ee"/>
+  <text x="1020" y="86" fill="#138a54" font-family="Inter, Arial, sans-serif" font-size="12" font-weight="760">Connected</text>
+
+  <g font-family="Inter, Arial, sans-serif">
+    <rect x="72" y="136" width="380" height="476" rx="14" fill="#fbfcfd" stroke="#d6dbe3"/>
+    <text x="94" y="172" fill="#1f2933" font-size="16" font-weight="760">Loop Queue</text>
+    <rect x="94" y="194" width="336" height="78" rx="10" fill="#ffffff" stroke="#d6dbe3"/>
+    <text x="112" y="225" fill="#667085" font-size="12" font-weight="760">Goal brief</text>
+    <text x="112" y="250" fill="#1f2933" font-size="14">Improve benchmark without long polling</text>
+    <rect x="94" y="292" width="336" height="74" rx="10" fill="#f8fbff" stroke="#2563eb"/>
+    <text x="112" y="322" fill="#1f2933" font-size="14" font-weight="760">browser_loop</text>
+    <rect x="315" y="304" width="96" height="24" rx="12" fill="#e8f0ff"/>
+    <text x="329" y="321" fill="#2563eb" font-size="12" font-weight="750">waiting</text>
+    <text x="112" y="348" fill="#667085" font-size="12">TaskRun handed to local_subprocess</text>
+
+    <rect x="476" y="136" width="650" height="476" rx="14" fill="#ffffff" stroke="#d6dbe3"/>
+    <text x="502" y="172" fill="#1f2933" font-size="18" font-weight="760">Operational pause</text>
+    <rect x="960" y="150" width="124" height="30" rx="15" fill="#e8f0ff"/>
+    <text x="980" y="170" fill="#2563eb" font-size="12" font-weight="760">waiting callback</text>
+    <rect x="502" y="198" width="586" height="72" rx="12" fill="#f8fafc" stroke="#cdd5e1"/>
+    <text x="522" y="228" fill="#1f2933" font-size="15" font-weight="760">Next action</text>
+    <text x="522" y="252" fill="#667085" font-size="13">Collect callback from the wake path, or explicitly terminate the TaskRun.</text>
+
+    <text x="502" y="306" fill="#667085" font-size="12" font-weight="800">TASK GRAPH</text>
+    <rect x="502" y="322" width="178" height="74" rx="10" fill="#fbfcfd" stroke="#d6dbe3"/>
+    <text x="520" y="352" fill="#1f2933" font-size="14" font-weight="760">task_1</text>
+    <text x="520" y="374" fill="#667085" font-size="12">approved code change</text>
+
+    <text x="714" y="306" fill="#667085" font-size="12" font-weight="800">TASKRUNS</text>
+    <rect x="714" y="322" width="178" height="74" rx="10" fill="#fbfcfd" stroke="#d6dbe3"/>
+    <text x="732" y="352" fill="#1f2933" font-size="14" font-weight="760">run_0001</text>
+    <text x="732" y="374" fill="#667085" font-size="12">owner · wake · log</text>
+
+    <text x="926" y="306" fill="#667085" font-size="12" font-weight="800">ARTIFACTS</text>
+    <rect x="926" y="322" width="162" height="74" rx="10" fill="#111827"/>
+    <text x="944" y="352" fill="#f9fafb" font-size="13" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">task_graph/...</text>
+    <text x="944" y="374" fill="#cbd5e1" font-size="12" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">preview</text>
+
+    <rect x="502" y="432" width="112" height="34" rx="6" fill="#1d4ed8"/>
+    <text x="538" y="454" fill="#ffffff" font-size="13" font-weight="760">Step</text>
+    <rect x="626" y="432" width="150" height="34" rx="6" fill="#ffffff" stroke="#d6dbe3"/>
+    <text x="650" y="454" fill="#1f2933" font-size="13" font-weight="760">Collect callback</text>
+    <rect x="788" y="432" width="164" height="34" rx="6" fill="#ffffff" stroke="#d6dbe3"/>
+    <text x="812" y="454" fill="#b42318" font-size="13" font-weight="760">Terminate TaskRun</text>
+    <text x="502" y="508" fill="#138a54" font-size="13" font-weight="700">Collect callback succeeded: completed.</text>
+  </g>
+</svg>

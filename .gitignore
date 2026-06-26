@@ -3,6 +3,7 @@ __pycache__/
 *.pyc
 .pytest_cache/
 .calo/
+.codex/
 dist/
 build/
 *.egg-info/

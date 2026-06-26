@@ -21,6 +21,8 @@ Hard boundary: Codex roles cannot create or own loops, cannot instantiate real T
 
 Production Codex turns are intended to run through the Codex SDK. Skills, `codex exec`, hooks, and thread automations can inspire operational-pause behavior or serve as temporary wake/debug surfaces, but they are not the Orchestrator control plane.
 
+![CALO loop control flow](docs/assets/calo-loop-control.svg)
+
 ## Positioning
 
 **For** research engineers and automation platform builders who need to delegate cross-day coding, research, reproduction, and benchmark goals to Codex without keeping a model turn alive, **Codex Agent Loop Orchestrator** is a local orchestration service that turns broad goals into auditable task graphs, runs Codex only for planning/work/judgment, and hands long work to external owners with explicit wake paths.
@@ -64,7 +66,7 @@ pytest -q
 Expected test result:
 
 ```text
-30 passed
+33 passed
 ```
 
 ## Intended Product Flow
@@ -100,9 +102,10 @@ The current repository is a working local MVP, but not the final product experie
 
 - It proves loop state, policy decisions, callback idempotency, sync/async demos, Git audit commits, and a local Web UI.
 - It supports goal-first creation from CLI, API, and Web UI.
+- It persists TaskGraph and TaskRun records and exposes artifact previews in the API and Web UI.
 - It still exposes `examples/loop_contract.json` as an advanced automation and test-fixture entry.
 - It has a deterministic local runner and a `codex-cli` compatibility bridge.
-- It does not yet implement full TaskGraph/TaskRun persistence models or the production Codex SDK adapter.
+- It does not yet implement the production Codex SDK adapter or scheduler-specific TaskRun adapters.
 
 Use the current MVP to validate the orchestration spine. Use the PRD as the source of truth for the product direction.
 
@@ -237,31 +240,30 @@ Available default human entrypoints:
 - `calo goal`: accepts a broad objective, repo, constraints, budget, and approval gates, then generates the contract.
 - API `POST /api/v1/goals`: accepts a goal brief and creates a loop through the Orchestrator.
 
-Planned next entrypoint:
+Available inspection surfaces:
 
-- Web UI task graph view and artifact browser.
+- Web UI task graph, TaskRun, and artifact browser panels.
+- API `GET /api/v1/loops/{loop_id}/tasks` and `GET /api/v1/loops/{loop_id}/artifacts`.
 
 ## Product Roadmap
 
 Now:
 
 - Keep goal-first CLI/API/Web creation stable while preserving contract JSON for tests and automation.
-- Tighten the dashboard around phase, next action, owner, wake path, callback readiness, and readable event summaries.
+- Tighten the dashboard around phase, next action, owner, wake path, callback readiness, task graph, TaskRuns, artifacts, and readable event summaries.
 - Preserve deterministic local runner for acceptance tests.
 
 Next:
 
 - Harden `calo goal`, `POST /api/v1/goals`, and Web goal creation for real user repositories.
-- Add TaskGraph and TaskRun persistence models.
 - Replace training-specific naming in callbacks and events with generic TaskRun language while preserving backward compatibility.
 - Implement Codex SDK Runner as the production model-backed path.
+- Add scheduler-specific TaskRun adapters for tmux/systemd/Slurm/Ray/Kubernetes.
 - Add policy tests that reject recursive loop creation, unapproved TaskRun creation, over-budget tasks, and long polling.
 
 Later:
 
-- Add Web UI task graph view and artifact browser.
-- Add artifact browser and final report viewer.
-- Add scheduler integrations for tmux/systemd/Slurm/Ray/Kubernetes.
+- Add a richer final report viewer.
 - Add multi-loop queueing, PR integration, and team audit controls.
 
 ## Sync Workflow
@@ -350,6 +352,8 @@ Open:
 http://127.0.0.1:8000/ui/
 ```
 
+![CALO Web dashboard artifact browser](docs/assets/calo-dashboard-artifacts.svg)
+
 The dashboard lets you create and operate local loops:
 
 - Create a loop from a goal brief without hand-writing contract JSON
@@ -373,8 +377,10 @@ The dashboard tracks:
 - Human-readable loop timeline with expandable details
 - Async TaskRun owner, wake path, run manifest, and Codex control state
 - Callback readiness, run status, and run log path for async TaskRuns
+- Persisted TaskGraph nodes and TaskRun records
+- Artifact previews for contract, task graph, evidence, runs, judge reports, and final reports
 
-Operational pause is already a release of Codex control, so `waiting_callback` loops are not pausable. Collect the callback when the wake path is ready, or cancel orchestration if the loop should stop. Cancelling a loop does not terminate an external TaskRun; the manifest and timeline record that the external owner still controls it.
+Operational pause is already a release of Codex control, so `waiting_callback` loops are not pausable. Collect the callback when the wake path is ready, cancel orchestration if the loop should stop, or explicitly terminate an owned local subprocess TaskRun. Plain cancellation does not terminate an external TaskRun; the manifest and timeline record that the external owner still controls it.
 
 Buttons call the same backend lifecycle endpoints as the CLI:
 
@@ -385,6 +391,7 @@ Buttons call the same backend lifecycle endpoints as the CLI:
 - Pause
 - Resume
 - Cancel
+- Terminate TaskRun
 
 The UI does not own lifecycle state. It reads summaries from:
 
@@ -440,6 +447,7 @@ calo collect-callback <loop_id> --workspace <workspace>
 calo pause <loop_id> --workspace <workspace>
 calo resume <loop_id> --workspace <workspace>
 calo cancel <loop_id> --workspace <workspace>
+calo terminate-run <loop_id> --workspace <workspace> --run-id <run_id>
 calo status <loop_id> --workspace <workspace>
 calo events <loop_id> --workspace <workspace>
 calo list --workspace <workspace>
@@ -511,6 +519,7 @@ POST /api/v1/loops/{loop_id}/collect-callback
 POST /api/v1/loops/{loop_id}/pause
 POST /api/v1/loops/{loop_id}/resume
 POST /api/v1/loops/{loop_id}/cancel
+POST /api/v1/loops/{loop_id}/runs/{run_id}/terminate
 ```
 
 Lifecycle endpoints accept optional `runner` and `model` query parameters for API symmetry. `start`, `step`, and `collect-callback` use them when invoking a runner; `pause`, `resume`, and `cancel` validate them for consistent Web behavior:
@@ -529,6 +538,8 @@ GET /api/v1/loops/{loop_id}/events
 GET /api/v1/context
 GET /api/v1/dashboard
 GET /api/v1/loops/{loop_id}/summary
+GET /api/v1/loops/{loop_id}/tasks
+GET /api/v1/loops/{loop_id}/artifacts
 ```
 
 TaskRun callback:
@@ -657,10 +668,13 @@ This repository is usable as a local MVP:
 - It can create runnable loops from plain goal briefs.
 - It can run async callback demo loops.
 - It has a local Web UI.
+- It persists TaskGraph and TaskRun records.
+- It exposes artifact previews through API and Web UI.
+- It can explicitly terminate owned local subprocess TaskRuns.
 - It has signed, idempotent callbacks.
 - It has tests and acceptance scripts.
 - It keeps lifecycle authority in the Orchestrator and PolicyEngine.
-- It still needs generic TaskGraph/TaskRun models, artifact browsing, and the production Codex SDK Runner to match the full PRD.
+- It still needs scheduler-specific TaskRun adapters and the production Codex SDK Runner to match the full PRD.
 
 See also:
 

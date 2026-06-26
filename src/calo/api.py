@@ -7,6 +7,7 @@ from fastapi import HTTPException
 from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
+from .artifacts import list_artifacts
 from .controller import LoopController
 from .codex_runner import CodexCliRunner, LocalDeterministicCodexRunner
 from .dashboard import build_loop_summary, list_loop_summaries
@@ -111,6 +112,16 @@ def create_app(db_path: Path | None = None) -> FastAPI:
         contract = controller.load_contract(loop_id)
         return controller.cancel_loop(contract)
 
+    @app.post("/api/v1/loops/{loop_id}/runs/{run_id}/terminate")
+    def terminate_run(loop_id: str, run_id: str, runner: str = "local", model: str | None = None):
+        make_runner(runner, model)
+        controller = controller_for()
+        contract = controller.load_contract(loop_id)
+        try:
+            return controller.terminate_task_run(contract, run_id)
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+
     @app.get("/api/v1/loops/{loop_id}")
     def get_loop(loop_id: str):
         return store.load_state(loop_id)
@@ -132,6 +143,17 @@ def create_app(db_path: Path | None = None) -> FastAPI:
     @app.get("/api/v1/loops/{loop_id}/events")
     def get_events(loop_id: str):
         return store.list_events(loop_id)
+
+    @app.get("/api/v1/loops/{loop_id}/tasks")
+    def get_tasks(loop_id: str):
+        store.load_state(loop_id)
+        return {"task_graphs": store.list_task_graphs(loop_id), "task_runs": store.list_task_runs(loop_id)}
+
+    @app.get("/api/v1/loops/{loop_id}/artifacts")
+    def get_artifacts(loop_id: str):
+        state = store.load_state(loop_id)
+        contract = store.load_contract(state.loop_id)
+        return list_artifacts(contract.artifact_root)
 
     @app.post("/api/v1/loops/{loop_id}/runs/{run_id}/callback")
     async def callback(

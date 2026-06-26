@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from .artifacts import read_json
+from .artifacts import list_artifacts, read_json
 from .models import LoopContract, LoopState, LoopSummary
 from .store import StateStore
 
@@ -57,6 +57,9 @@ def build_loop_summary(store: StateStore, state: LoopState, contract: LoopContra
         callback_ready=callback_ready,
         callback_processed=callback_processed,
         codex_control=codex_control,
+        task_graph=store.latest_task_graph(state.loop_id),
+        task_runs=store.list_task_runs(state.loop_id),
+        artifacts=list_artifacts(contract.artifact_root, limit=30, preview_chars=240),
         recent_events=store.recent_events(state.loop_id),
     )
 

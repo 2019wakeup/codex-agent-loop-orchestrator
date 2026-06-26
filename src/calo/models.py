@@ -46,6 +46,15 @@ class RunStatus(str, Enum):
     PARTIAL = "partial"
 
 
+class TaskStatus(str, Enum):
+    PLANNED = "planned"
+    APPROVED = "approved"
+    RUNNING = "running"
+    SUCCEEDED = "succeeded"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
+
+
 class IterationLimits(BaseModel):
     max_turns: int = 3
     patience: int = 2
@@ -164,6 +173,43 @@ class Plan(BaseModel):
     requires_human: bool = False
 
 
+class TaskNode(BaseModel):
+    id: str
+    turn_id: str
+    type: str
+    target_files: list[str] = Field(default_factory=list)
+    instruction: str
+    status: TaskStatus = TaskStatus.PLANNED
+    dependencies: list[str] = Field(default_factory=list)
+
+
+class TaskGraph(BaseModel):
+    loop_id: str
+    turn_id: str
+    objective: str
+    nodes: list[TaskNode] = Field(default_factory=list)
+    artifact_path: str | None = None
+    updated_at: str = Field(default_factory=utc_now)
+
+
+class TaskRunRecord(BaseModel):
+    loop_id: str
+    run_id: str
+    turn_id: str
+    task_id: str = "external_task"
+    status: TaskStatus = TaskStatus.RUNNING
+    owner: str | None = None
+    command: str | None = None
+    pid: int | None = None
+    wake_path: str | None = None
+    stdout_path: str | None = None
+    manifest_path: str | None = None
+    callback_processed: bool = False
+    external_task_control: Literal["owned", "released", "terminated", "not_terminated", "already_exited", "unknown"] = "unknown"
+    created_at: str = Field(default_factory=utc_now)
+    updated_at: str = Field(default_factory=utc_now)
+
+
 class WorkerSummary(BaseModel):
     turn_id: str
     changed_files: list[str]
@@ -218,6 +264,14 @@ class LoopEvent(BaseModel):
     created_at: str
 
 
+class ArtifactEntry(BaseModel):
+    path: str
+    kind: Literal["json", "markdown", "text", "log", "file"]
+    size_bytes: int
+    modified_at: str
+    preview: str | None = None
+
+
 class LoopSummary(BaseModel):
     loop_id: str
     objective: str
@@ -242,4 +296,7 @@ class LoopSummary(BaseModel):
     callback_ready: bool | None = None
     callback_processed: bool | None = None
     codex_control: str | None = None
+    task_graph: TaskGraph | None = None
+    task_runs: list[TaskRunRecord] = Field(default_factory=list)
+    artifacts: list[ArtifactEntry] = Field(default_factory=list)
     recent_events: list[LoopEvent] = Field(default_factory=list)
