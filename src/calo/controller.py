@@ -8,7 +8,20 @@ from pathlib import Path
 from .artifacts import ensure_artifact_dirs, read_json, write_json, write_text
 from .codex_runner import CodexRunner, LocalDeterministicCodexRunner
 from .git_adapter import GitAdapter
-from .models import CallbackPayload, Decision, LoopContract, LoopState, LoopStatus, TaskGraph, TaskNode, TaskRunRecord, TaskStatus, utc_now
+from .models import (
+    CallbackPayload,
+    Decision,
+    LoopContract,
+    LoopState,
+    LoopStatus,
+    OperatorGuidance,
+    OperatorGuidanceRequest,
+    TaskGraph,
+    TaskNode,
+    TaskRunRecord,
+    TaskStatus,
+    utc_now,
+)
 from .policy import PolicyEngine
 from .store import StateStore
 from .task_runner import TaskRunner, write_fake_training_script
@@ -322,6 +335,45 @@ class LoopController:
         )
         return record
 
+    def submit_operator_guidance(self, contract: LoopContract, request: OperatorGuidanceRequest) -> OperatorGuidance:
+        state = self.store.load_state(contract.loop_id)
+        previous_objective = contract.objective
+        if request.revised_objective:
+            contract.objective = request.revised_objective
+        created_at = utc_now()
+        safe_stamp = created_at.replace(":", "").replace("+", "Z")
+        guidance_path = contract.artifact_root / "guidance" / f"{safe_stamp}.json"
+        guidance = OperatorGuidance(
+            loop_id=contract.loop_id,
+            message=request.message,
+            applies_to=request.applies_to,
+            revised_objective=request.revised_objective,
+            previous_objective=previous_objective if request.revised_objective else None,
+            artifact_path=str(guidance_path),
+            created_at=created_at,
+        )
+        write_json(guidance_path, guidance)
+        write_text(
+            guidance_path.with_suffix(".md"),
+            (
+                f"# Operator Guidance\n\n"
+                f"Applies to: `{guidance.applies_to}`\n\n"
+                f"Message:\n\n{guidance.message}\n\n"
+                + (
+                    f"Previous objective:\n\n{previous_objective}\n\n"
+                    f"Revised objective:\n\n{request.revised_objective}\n"
+                    if request.revised_objective
+                    else ""
+                )
+            ),
+        )
+        if request.revised_objective:
+            write_json(contract.artifact_root / "contract.json", contract)
+        self.store.save_state(state, contract)
+        self.store.add_event(contract.loop_id, "operator.guidance.submitted", guidance.model_dump(mode="json"))
+        write_json(contract.artifact_root / "state.json", state)
+        return guidance
+
     def handle_callback(self, contract: LoopContract, callback: CallbackPayload) -> LoopState:
         state = self.store.load_state(contract.loop_id)
         if self.store.has_callback(contract.loop_id, callback.run_id):
@@ -440,6 +492,7 @@ class LoopController:
             "validation_passed": validation_passed,
             "git_status": git.status_short(),
             "git_diff_summary": git.diff_summary(),
+            "operator_guidance": [item.model_dump(mode="json") for item in self.store.list_operator_guidance(contract.loop_id, limit=5)],
         }
         write_json(contract.artifact_root / "evidence" / f"{turn_id}.json", evidence)
         return evidence

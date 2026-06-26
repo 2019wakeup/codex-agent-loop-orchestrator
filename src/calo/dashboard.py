@@ -1,10 +1,20 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from pathlib import Path
 
 from .artifacts import list_artifacts, read_json
 from .models import LoopContract, LoopState, LoopSummary
 from .store import StateStore
+
+
+def _parse_dt(value: str | None) -> datetime | None:
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
 
 
 def build_loop_summary(store: StateStore, state: LoopState, contract: LoopContract) -> LoopSummary:
@@ -33,6 +43,13 @@ def build_loop_summary(store: StateStore, state: LoopState, contract: LoopContra
             callback_processed = bool(manifest.get("callback_processed"))
             callback_ready = bool(wake_path) and Path(wake_path).exists() and not callback_processed
             codex_control = manifest.get("codex_control")
+    created_at = _parse_dt(contract.created_at)
+    updated_at = datetime.now(timezone.utc)
+    elapsed_seconds = 0
+    if created_at is not None:
+        elapsed_seconds = max(0, round((updated_at - created_at).total_seconds()))
+    event_count = len(store.list_events(state.loop_id))
+    token_estimate = max(0, (state.turn * 2400) + (event_count * 90) + (len(store.list_operator_guidance(state.loop_id)) * 180))
     return LoopSummary(
         loop_id=state.loop_id,
         objective=contract.objective,
@@ -49,6 +66,10 @@ def build_loop_summary(store: StateStore, state: LoopState, contract: LoopContra
         updated_at=state.updated_at,
         repo_path=str(contract.repo_path),
         execution_mode=contract.execution_mode,
+        created_at=contract.created_at,
+        elapsed_seconds=elapsed_seconds,
+        estimated_codex_tokens=token_estimate,
+        token_budget_hint=contract.iteration_limits.max_turns * 3000,
         run_owner=run_owner,
         wake_path=wake_path,
         run_manifest_path=run_manifest_path,
@@ -60,6 +81,7 @@ def build_loop_summary(store: StateStore, state: LoopState, contract: LoopContra
         task_graph=store.latest_task_graph(state.loop_id),
         task_runs=store.list_task_runs(state.loop_id),
         artifacts=list_artifacts(contract.artifact_root, limit=30, preview_chars=240),
+        operator_guidance=store.list_operator_guidance(state.loop_id),
         recent_events=store.recent_events(state.loop_id),
     )
 

@@ -62,13 +62,22 @@ def test_web_buttons_and_action_messages_in_real_browser(tmp_path: Path) -> None
             page = browser.new_page(viewport={"width": 1280, "height": 900})
             page.goto(f"{base_url}/ui/")
             page.get_by_label("Goal brief").fill("Browser acceptance async loop")
-            page.get_by_label("Repo path").fill(str(workspace / "repo"))
+            page.get_by_label("Repository").select_option(str(workspace))
             page.get_by_label("Loop ID").fill("browser_loop")
             page.get_by_label("Target score").fill("0.6")
             page.get_by_label("Max turns").fill("2")
             page.get_by_label("Async mode").check()
             page.get_by_role("button", name="Create loop").click()
             expect(page.get_by_text("Created browser_loop.")).to_be_visible()
+
+            page.get_by_label("Instruction").fill("Make the next turn focus on evidence clarity and operator intent.")
+            page.get_by_label("Revise goal brief").fill("Browser acceptance async loop with operator guidance")
+            page.get_by_role("button", name="Submit guidance").click()
+            expect(page.get_by_text("Guidance saved and goal brief revised.")).to_be_visible()
+            expect(page.locator(".objective-full")).to_contain_text("Browser acceptance async loop with operator guidance")
+            expect(page.locator(".guidance-entry").first).to_contain_text(
+                "Make the next turn focus on evidence clarity and operator intent."
+            )
 
             start = page.get_by_role("button", name="Start")
             step = page.get_by_role("button", name="Step")

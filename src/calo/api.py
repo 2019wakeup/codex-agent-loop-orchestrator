@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import subprocess
 from pathlib import Path
 
 from fastapi import FastAPI, Header, Request
@@ -12,7 +13,7 @@ from .controller import LoopController
 from .codex_runner import CodexCliRunner, LocalDeterministicCodexRunner
 from .dashboard import build_loop_summary, list_loop_summaries
 from .goal import contract_from_goal
-from .models import CallbackPayload, GoalRequest, LoopContract, LoopStatus
+from .models import CallbackPayload, GoalRequest, LoopContract, LoopStatus, OperatorGuidanceRequest
 from .security import verify_signature
 from .store import StateStore
 
@@ -39,13 +40,48 @@ def create_app(db_path: Path | None = None) -> FastAPI:
             return resolved_db_path.parent.parent
         return resolved_db_path.parent
 
+    def repo_options() -> list[dict[str, str]]:
+        options: dict[str, dict[str, str]] = {}
+
+        def add(path: Path, label: str) -> None:
+            resolved = path.expanduser().resolve()
+            options[str(resolved)] = {"label": label, "path": str(resolved)}
+
+        workspace = default_workspace()
+        add(workspace, "Workspace")
+        try:
+            git_root = subprocess.run(
+                ["git", "rev-parse", "--show-toplevel"],
+                cwd=workspace,
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL,
+                check=True,
+            ).stdout.strip()
+            if git_root:
+                add(Path(git_root), "Current Git repository")
+        except Exception:
+            pass
+        for state in store.list_loops():
+            try:
+                contract = store.load_contract(state.loop_id)
+            except KeyError:
+                continue
+            add(contract.repo_path, f"Loop repo: {state.loop_id}")
+        return list(options.values())
+
     @app.get("/", include_in_schema=False)
     def root():
         return RedirectResponse(url="/ui/")
 
     @app.get("/api/v1/context")
     def context():
-        return {"default_repo_path": str(default_workspace()), "runner": "local", "runner_options": ["local", "codex-cli"]}
+        return {
+            "default_repo_path": str(default_workspace()),
+            "repo_options": repo_options(),
+            "runner": "local",
+            "runner_options": ["local", "codex-cli"],
+        }
 
     @app.post("/api/v1/loops")
     def create_loop(contract: LoopContract):
@@ -111,6 +147,13 @@ def create_app(db_path: Path | None = None) -> FastAPI:
         controller = controller_for()
         contract = controller.load_contract(loop_id)
         return controller.cancel_loop(contract)
+
+    @app.post("/api/v1/loops/{loop_id}/guidance")
+    def submit_guidance(loop_id: str, request: OperatorGuidanceRequest, runner: str = "local", model: str | None = None):
+        make_runner(runner, model)
+        controller = controller_for()
+        contract = controller.load_contract(loop_id)
+        return controller.submit_operator_guidance(contract, request)
 
     @app.post("/api/v1/loops/{loop_id}/runs/{run_id}/terminate")
     def terminate_run(loop_id: str, run_id: str, runner: str = "local", model: str | None = None):

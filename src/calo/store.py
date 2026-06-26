@@ -5,7 +5,7 @@ import sqlite3
 from pathlib import Path
 from typing import Any
 
-from .models import LoopContract, LoopEvent, LoopState, TaskGraph, TaskRunRecord, utc_now
+from .models import LoopContract, LoopEvent, LoopState, OperatorGuidance, TaskGraph, TaskRunRecord, utc_now
 
 
 class StateStore:
@@ -180,6 +180,22 @@ class StateStore:
         ]
         events.reverse()
         return events
+
+    def list_operator_guidance(self, loop_id: str, limit: int = 5) -> list[OperatorGuidance]:
+        with self._connect() as con:
+            rows = con.execute(
+                """
+                select payload_json
+                from events
+                where loop_id = ? and event_type = 'operator.guidance.submitted'
+                order by id desc
+                limit ?
+                """,
+                (loop_id, limit),
+            ).fetchall()
+        guidance = [OperatorGuidance.model_validate(json.loads(row["payload_json"])) for row in rows]
+        guidance.reverse()
+        return guidance
 
     def save_task_graph(self, graph: TaskGraph) -> None:
         graph.updated_at = utc_now()

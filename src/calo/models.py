@@ -111,6 +111,40 @@ class GoalRequest(BaseModel):
         return value
 
 
+class OperatorGuidanceRequest(BaseModel):
+    message: str = Field(min_length=1)
+    revised_objective: str | None = None
+    applies_to: Literal["next_turn", "current_loop"] = "next_turn"
+
+    @field_validator("message")
+    @classmethod
+    def message_must_not_be_blank(cls, value: str) -> str:
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError("message must not be blank")
+        return stripped
+
+    @field_validator("revised_objective")
+    @classmethod
+    def revised_objective_must_not_be_blank(cls, value: str | None) -> str | None:
+        if value is None:
+            return value
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError("revised_objective must not be blank when provided")
+        return stripped
+
+
+class OperatorGuidance(BaseModel):
+    loop_id: str
+    message: str
+    applies_to: Literal["next_turn", "current_loop"] = "next_turn"
+    revised_objective: str | None = None
+    previous_objective: str | None = None
+    artifact_path: str | None = None
+    created_at: str = Field(default_factory=utc_now)
+
+
 class LoopContract(BaseModel):
     loop_id: str
     objective: str
@@ -288,6 +322,10 @@ class LoopSummary(BaseModel):
     updated_at: str
     repo_path: str
     execution_mode: Literal["sync", "async"]
+    created_at: str | None = None
+    elapsed_seconds: int = 0
+    estimated_codex_tokens: int = 0
+    token_budget_hint: int | None = None
     run_owner: str | None = None
     wake_path: str | None = None
     run_manifest_path: str | None = None
@@ -299,4 +337,5 @@ class LoopSummary(BaseModel):
     task_graph: TaskGraph | None = None
     task_runs: list[TaskRunRecord] = Field(default_factory=list)
     artifacts: list[ArtifactEntry] = Field(default_factory=list)
+    operator_guidance: list[OperatorGuidance] = Field(default_factory=list)
     recent_events: list[LoopEvent] = Field(default_factory=list)

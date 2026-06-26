@@ -6,6 +6,7 @@ const state = {
   model: "",
   actionMessage: "",
   actionMessageKind: "",
+  repoOptions: [],
 };
 
 const els = {
@@ -53,6 +54,31 @@ function formatDate(value) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
   return date.toLocaleString();
+}
+
+function formatDuration(seconds) {
+  const total = Number(seconds || 0);
+  if (!Number.isFinite(total) || total <= 0) return "0s";
+  const hours = Math.floor(total / 3600);
+  const minutes = Math.floor((total % 3600) / 60);
+  const secs = Math.floor(total % 60);
+  if (hours > 0) return `${hours}h ${minutes}m`;
+  if (minutes > 0) return `${minutes}m ${secs}s`;
+  return `${secs}s`;
+}
+
+function formatTokens(value) {
+  const count = Number(value || 0);
+  if (!Number.isFinite(count) || count <= 0) return "0";
+  if (count >= 1000000) return `${(count / 1000000).toFixed(1)}M`;
+  if (count >= 1000) return `${(count / 1000).toFixed(1)}k`;
+  return `${Math.round(count)}`;
+}
+
+function formatTokenEstimate(loop) {
+  const used = formatTokens(loop.estimated_codex_tokens);
+  const budget = loop.token_budget_hint ? formatTokens(loop.token_budget_hint) : null;
+  return budget ? `${used} / ${budget}` : used;
 }
 
 function labelize(value) {
@@ -151,6 +177,34 @@ function renderArtifacts(artifacts) {
               </summary>
               <pre>${escapeHtml(artifact.preview || "Preview not available for this file type.")}</pre>
             </details>
+          `
+        )
+        .join("")}
+    </div>
+  `;
+}
+
+function renderOperatorGuidance(guidanceItems) {
+  if (!guidanceItems || !guidanceItems.length) {
+    return '<div class="empty-timeline">No operator guidance has been submitted yet.</div>';
+  }
+  return `
+    <div class="guidance-list">
+      ${guidanceItems
+        .map(
+          (item) => `
+            <article class="guidance-entry">
+              <div class="guidance-entry-head">
+                <strong>${escapeHtml(labelize(item.applies_to))}</strong>
+                <time>${escapeHtml(formatDate(item.created_at))}</time>
+              </div>
+              <p>${escapeHtml(item.message)}</p>
+              ${
+                item.revised_objective
+                  ? `<div class="guidance-revision"><span>Revised objective</span><strong>${escapeHtml(item.revised_objective)}</strong></div>`
+                  : ""
+              }
+            </article>
           `
         )
         .join("")}
@@ -347,6 +401,16 @@ function describeEvent(event) {
         { label: "decision", value: labelize(payload.decision) },
       ],
     },
+    "operator.guidance.submitted": {
+      title: payload.revised_objective ? "Goal guidance submitted" : "Operator guidance submitted",
+      body: payload.revised_objective
+        ? "The loop objective was revised and the next Codex turn will receive this guidance."
+        : "The next Codex turn will receive this operator instruction in its evidence packet.",
+      chips: [
+        { label: "applies", value: labelize(payload.applies_to) },
+        { label: "artifact", value: payload.artifact_path },
+      ],
+    },
     "loop.paused": {
       title: "Loop paused",
       body: "Orchestrator execution is stopped until a resume command is received.",
@@ -475,14 +539,27 @@ async function loadContext() {
     if (!response.ok) return;
     const context = await response.json();
     state.defaultRepoPath = context.default_repo_path || "";
+    state.repoOptions = context.repo_options || [];
     state.runner = context.runner || "local";
-    if (state.defaultRepoPath && !els.goalRepo.value) {
+    renderRepoOptions();
+    if (state.defaultRepoPath && els.goalRepo) {
       els.goalRepo.value = state.defaultRepoPath;
     }
     if (els.goalRunner) els.goalRunner.value = state.runner;
   } catch (_error) {
     // The dashboard can still operate without context defaults.
   }
+}
+
+function renderRepoOptions() {
+  if (!els.goalRepo) return;
+  const options = state.repoOptions.length
+    ? state.repoOptions
+    : [{ label: "Workspace", path: state.defaultRepoPath || "" }];
+  els.goalRepo.innerHTML = options
+    .filter((option) => option.path)
+    .map((option) => `<option value="${escapeHtml(option.path)}">${escapeHtml(option.label)} - ${escapeHtml(option.path)}</option>`)
+    .join("");
 }
 
 async function submitGoal(event) {
@@ -503,7 +580,7 @@ async function submitGoal(event) {
   state.model = `${formData.get("model") || ""}`.trim();
 
   if (!objective || !repoPath) {
-    setGoalMessage("Goal brief and repo path are required.", "error");
+    setGoalMessage("Goal brief and repository selection are required.", "error");
     return;
   }
 
@@ -538,6 +615,7 @@ async function submitGoal(event) {
     const created = await response.json();
     state.selectedLoopId = created.loop_id;
     els.goalForm.reset();
+    renderRepoOptions();
     if (state.defaultRepoPath) els.goalRepo.value = state.defaultRepoPath;
     if (els.goalRunner) els.goalRunner.value = state.runner;
     if (els.goalModel) els.goalModel.value = state.model;
@@ -548,6 +626,35 @@ async function submitGoal(event) {
   } finally {
     els.goalSubmit.disabled = false;
   }
+}
+
+async function submitGuidance(loop) {
+  const messageInput = els.detail.querySelector("#guidance-message");
+  const objectiveInput = els.detail.querySelector("#guidance-objective");
+  const appliesInput = els.detail.querySelector("#guidance-applies");
+  const message = messageInput.value.trim();
+  const revisedObjective = objectiveInput.value.trim();
+  if (!message) {
+    state.actionMessage = "Guidance failed: write an instruction for the next Codex turn.";
+    state.actionMessageKind = "error";
+    renderDetail(loop);
+    return;
+  }
+  const payload = {
+    message,
+    applies_to: appliesInput.value || "next_turn",
+    revised_objective: revisedObjective || null,
+  };
+  const response = await fetch(`/api/v1/loops/${encodeURIComponent(loop.loop_id)}/guidance${runnerQuery()}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(text || `guidance failed with HTTP ${response.status}`);
+  }
+  return response.json();
 }
 
 function render() {
@@ -564,6 +671,7 @@ function render() {
     row.querySelector(".turns").textContent = `Turn ${loop.turn}/${loop.max_turns}`;
     row.querySelector(".metric").textContent = `${loop.target_metric}: ${formatValue(loop.best_metric)} / ${formatValue(loop.target_value)}`;
     row.querySelector(".decision").textContent = loop.last_decision ? labelize(loop.last_decision) : "no decision yet";
+    row.querySelector(".cost").textContent = `${formatDuration(loop.elapsed_seconds)} · ${formatTokenEstimate(loop)} tokens est.`;
     row.querySelector(".bar span").style.width = `${loop.progress_percent}%`;
     row.addEventListener("click", () => {
       if (state.selectedLoopId !== loop.loop_id) {
@@ -618,6 +726,8 @@ function renderDetail(loop) {
         <div class="stat"><div class="stat-label">Turn budget</div><div class="stat-value">${escapeHtml(`${loop.progress_percent}%`)}</div></div>
         <div class="stat"><div class="stat-label">${escapeHtml(loop.target_metric)}</div><div class="stat-value">${escapeHtml(`${formatValue(loop.best_metric)} / ${formatValue(loop.target_value)}`)}</div></div>
         <div class="stat"><div class="stat-label">Metric target</div><div class="stat-value">${escapeHtml(metricPercent)}</div></div>
+        <div class="stat"><div class="stat-label">Elapsed</div><div class="stat-value">${escapeHtml(formatDuration(loop.elapsed_seconds))}</div></div>
+        <div class="stat"><div class="stat-label">Token estimate</div><div class="stat-value">${escapeHtml(formatTokenEstimate(loop))}</div></div>
       </div>
       <div class="section-title">Objective</div>
       <p class="objective-full">${escapeHtml(loop.objective)}</p>
@@ -627,7 +737,7 @@ function renderDetail(loop) {
         <div><span>Last run</span><strong>${escapeHtml(formatValue(loop.last_run_id))}</strong></div>
         <div><span>Last decision</span><strong>${escapeHtml(loop.last_decision ? labelize(loop.last_decision) : "n/a")}</strong></div>
         <div><span>Updated</span><strong>${escapeHtml(formatDate(loop.updated_at))}</strong></div>
-        <div><span>Repo path</span><strong>${escapeHtml(formatValue(loop.repo_path))}</strong></div>
+        <div><span>Repository</span><strong>${escapeHtml(formatValue(loop.repo_path))}</strong></div>
         <div><span>Run owner</span><strong>${escapeHtml(formatValue(loop.run_owner))}</strong></div>
         <div><span>Run status</span><strong>${escapeHtml(formatValue(loop.run_status))}</strong></div>
         <div><span>Callback</span><strong>${escapeHtml(callbackState)}</strong></div>
@@ -647,6 +757,30 @@ function renderDetail(loop) {
         <button class="button danger" data-action="terminate-run" ${actions.terminate ? "" : "disabled"}>Terminate TaskRun</button>
       </div>
       <div id="action-message" class="action-message ${escapeHtml(state.actionMessageKind)}" role="status" aria-live="polite">${escapeHtml(state.actionMessage)}</div>
+      <div class="section-title">Guide next Codex turn</div>
+      <form id="guidance-form" class="guidance-form">
+        <div class="field-block">
+          <label for="guidance-message">Instruction</label>
+          <textarea id="guidance-message" rows="3" placeholder="Tell Planner, Worker, or Judge what to consider next."></textarea>
+        </div>
+        <div class="field-block">
+          <label for="guidance-objective">Revise goal brief</label>
+          <textarea id="guidance-objective" rows="2" placeholder="Optional. Leave blank to keep the current objective."></textarea>
+          <small class="field-help">Current: ${escapeHtml(loop.objective)}</small>
+        </div>
+        <div class="guidance-controls">
+          <div class="field-block">
+            <label for="guidance-applies">Scope</label>
+            <select id="guidance-applies">
+              <option value="next_turn">Next Codex turn</option>
+              <option value="current_loop">Current loop</option>
+            </select>
+          </div>
+          <button class="button primary" type="submit">Submit guidance</button>
+        </div>
+      </form>
+      <div class="section-title">Operator guidance</div>
+      ${renderOperatorGuidance(loop.operator_guidance)}
       <div class="section-title">Task graph</div>
       ${renderTaskGraph(loop.task_graph)}
       <div class="section-title">TaskRuns</div>
@@ -677,6 +811,30 @@ function renderDetail(loop) {
         button.disabled = false;
       }
     });
+  });
+  const guidanceForm = els.detail.querySelector("#guidance-form");
+  guidanceForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const submit = guidanceForm.querySelector('button[type="submit"]');
+    submit.disabled = true;
+    const actionMessage = els.detail.querySelector("#action-message");
+    actionMessage.textContent = "Submitting guidance...";
+    actionMessage.className = "action-message";
+    try {
+      const result = await submitGuidance(loop);
+      state.actionMessage = result.revised_objective
+        ? "Guidance saved and goal brief revised."
+        : "Guidance saved for the next Codex turn.";
+      state.actionMessageKind = "success";
+      await loadDashboard();
+    } catch (error) {
+      state.actionMessage = `Guidance failed: ${error.message}`;
+      state.actionMessageKind = "error";
+      actionMessage.textContent = state.actionMessage;
+      actionMessage.className = "action-message error";
+    } finally {
+      submit.disabled = false;
+    }
   });
 }
 

@@ -8,9 +8,12 @@
   </head>
   <body>
     <header class="topbar">
-      <div>
-        <h1>Codex Agent Loop Orchestrator</h1>
-        <p class="subtitle">Watch Codex improvement loops while long-running work stays outside Codex turns.</p>
+      <div class="brand-lockup">
+        <div class="brand-mark" aria-hidden="true">CA</div>
+        <div>
+          <h1>Codex Agent Loop Orchestrator</h1>
+          <p class="subtitle">Local control plane for short Codex turns and externally owned long work.</p>
+        </div>
       </div>
       <div class="topbar-actions">
         <span id="health" class="health">Connecting</span>
@@ -21,7 +24,10 @@
     <main class="layout">
       <section class="panel loops-panel" aria-label="Loops">
         <div class="panel-header">
-          <h2>Loop Queue</h2>
+          <div>
+            <h2>Loop Queue</h2>
+            <p class="panel-note">Create a goal, then hand off long work without keeping Codex awake.</p>
+          </div>
           <span id="loop-count" class="muted">0</span>
         </div>
         <form id="goal-form" class="goal-form">
@@ -31,8 +37,9 @@
           </div>
           <div class="field-grid">
             <div class="field-block">
-              <label for="goal-repo">Repo path</label>
-              <input id="goal-repo" name="repo_path" type="text" required />
+              <label for="goal-repo">Repository</label>
+              <select id="goal-repo" name="repo_path" required></select>
+              <small class="field-help">Choose the repository or workspace CALO should operate on.</small>
             </div>
             <div class="field-block">
               <label for="goal-loop-id">Loop ID</label>
@@ -73,13 +80,19 @@
                 <label for="goal-model">Model</label>
                 <input id="goal-model" name="model" type="text" placeholder="runner default" />
               </div>
+            </div>
+            <div class="advanced-divider">Adapter commands</div>
+            <p class="advanced-help">Use these only when connecting a custom validation check or external TaskRun. The built-in local demo works without editing them.</p>
+            <div class="field-grid">
               <div class="field-block">
-                <label for="goal-validation-command">Validation command</label>
+                <label for="goal-validation-command">Quick check command</label>
                 <input id="goal-validation-command" name="validation_command" type="text" value="python -m py_compile target_app.py" />
+                <small class="field-help">Fast command CALO runs before launching long work.</small>
               </div>
               <div class="field-block wide-field">
-                <label for="goal-task-command">TaskRun command</label>
+                <label for="goal-task-command">Long-work adapter command</label>
                 <input id="goal-task-command" name="task_command" type="text" value="python fake_train.py --callback-file {callback_file} --run-id {run_id} --turn-id {turn_id}" />
+                <small class="field-help">Optional TaskRun integration. CALO fills the placeholders for callback and audit wiring.</small>
               </div>
             </div>
           </details>
@@ -107,7 +120,10 @@
 
       <section class="panel detail-panel" aria-label="Loop detail">
         <div class="panel-header">
-          <h2 id="detail-title">Loop Detail</h2>
+          <div>
+            <h2 id="detail-title">Loop Detail</h2>
+            <p class="panel-note">Current phase, next action, evidence, and operator guidance.</p>
+          </div>
           <span id="detail-status" class="status neutral">No loop</span>
         </div>
         <div id="detail" class="detail-empty">No loop selected.</div>
@@ -125,6 +141,7 @@
           <span class="turns"></span>
           <span class="metric"></span>
           <span class="decision"></span>
+          <span class="cost"></span>
         </div>
         <div class="bar"><span></span></div>
       </button>

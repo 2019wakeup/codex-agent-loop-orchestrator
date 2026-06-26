@@ -50,6 +50,10 @@ def test_api_create_start_and_get_events(tmp_path: Path) -> None:
     assert summary["progress_percent"] >= 50
     assert summary["target_metric"] == "score"
     assert summary["metric_percent"] == 100
+    assert summary["created_at"]
+    assert summary["elapsed_seconds"] >= 0
+    assert summary["estimated_codex_tokens"] > 0
+    assert summary["token_budget_hint"] == 6000
     assert summary["recent_events"]
 
     dashboard_response = client.get("/api/v1/dashboard")
@@ -114,6 +118,45 @@ def test_api_goal_brief_creates_runnable_loop_without_contract_json(tmp_path: Pa
     events = [event["event_type"] for event in client.get("/api/v1/loops/goal_loop/events").json()]
     assert "loop.created" in events
     assert "run.completed" in events
+
+
+def test_api_operator_guidance_updates_objective_and_next_evidence(tmp_path: Path) -> None:
+    app = create_app(tmp_path / "api.sqlite3")
+    client = TestClient(app)
+    goal = {
+        "loop_id": "guided_loop",
+        "objective": "Improve the Web entrypoint",
+        "repo_path": str(tmp_path / "guided_repo"),
+        "target_value": 0.6,
+        "max_turns": 2,
+    }
+    assert client.post("/api/v1/goals", json=goal).status_code == 200
+
+    guidance = {
+        "message": "Prioritize direct operator commands and clearer next-step copy.",
+        "revised_objective": "Improve the Web entrypoint with operator guidance controls.",
+        "applies_to": "next_turn",
+    }
+    response = client.post("/api/v1/loops/guided_loop/guidance", json=guidance)
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["message"] == guidance["message"]
+    assert body["revised_objective"] == guidance["revised_objective"]
+    assert body["previous_objective"] == goal["objective"]
+
+    summary = client.get("/api/v1/loops/guided_loop/summary").json()
+    assert summary["objective"] == guidance["revised_objective"]
+    assert summary["operator_guidance"][0]["message"] == guidance["message"]
+
+    assert client.post("/api/v1/loops/guided_loop/step").status_code == 200
+    evidence_path = tmp_path / "guided_repo" / ".codex" / "agent-loop" / "guided_loop" / "evidence" / "turn_0001.json"
+    evidence = evidence_path.read_text(encoding="utf-8")
+    assert guidance["message"] in evidence
+    assert guidance["revised_objective"] in evidence
+
+    artifacts = client.get("/api/v1/loops/guided_loop/artifacts").json()
+    assert any(entry["path"].startswith("guidance/") for entry in artifacts)
 
 
 def test_api_step_and_collect_callback_support_web_async_flow(tmp_path: Path) -> None:
@@ -315,13 +358,15 @@ def test_web_ui_static_routes(tmp_path: Path) -> None:
     html = client.get("/ui/")
     assert html.status_code == 200
     assert "Codex Agent Loop Orchestrator" in html.text
-    assert "Watch Codex improvement loops" in html.text
+    assert "Local control plane for short Codex turns" in html.text
     assert 'id="goal-form"' in html.text
     assert "Goal brief" in html.text
+    assert "<select id=\"goal-repo\"" in html.text
     assert "Create loop" in html.text
     assert "Advanced settings" in html.text
-    assert "Validation command" in html.text
-    assert "TaskRun command" in html.text
+    assert "Adapter commands" in html.text
+    assert "Quick check command" in html.text
+    assert "Long-work adapter command" in html.text
     assert "Diff review" in html.text
     assert "Auto commit" in html.text
 
@@ -345,6 +390,9 @@ def test_web_ui_static_routes(tmp_path: Path) -> None:
     assert "state.actionMessage" in app_js
     assert "describeEvent" in app_js
     assert "Loop timeline" in app_js
+    assert "renderRepoOptions" in app_js
+    assert "estimated_codex_tokens" in app_js
+    assert "formatDuration" in app_js
     assert "JSON.stringify(loop" not in app_js
     assert "JSON.stringify(event" not in app_js
 

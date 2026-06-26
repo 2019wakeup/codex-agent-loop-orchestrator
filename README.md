@@ -357,7 +357,9 @@ http://127.0.0.1:8000/ui/
 The dashboard lets you create and operate local loops:
 
 - Create a loop from a goal brief without hand-writing contract JSON
-- Configure target metric, patience, min delta, validation command, TaskRun command, diff review, auto commit, runner, and model from advanced settings
+- Choose the repository from a dropdown instead of typing raw paths
+- Configure target metric, patience, min delta, review gates, runner, and model from advanced settings
+- Keep validation and long-work adapter commands tucked under Adapter commands for custom integrations
 - Start a loop until the next terminal or waiting state
 - Step exactly one orchestrator turn
 - Collect an async callback after the wake path is written
@@ -374,6 +376,7 @@ The dashboard tracks:
 - Metric progress
 - Last run ID
 - Last decision
+- Elapsed loop time and estimated Codex token usage
 - Human-readable loop timeline with expandable details
 - Async TaskRun owner, wake path, run manifest, and Codex control state
 - Callback readiness, run status, and run log path for async TaskRuns

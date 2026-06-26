@@ -11,7 +11,7 @@ from .models import ArtifactEntry
 
 
 def ensure_artifact_dirs(root: Path) -> None:
-    for name in ["plan", "task_graph", "handoff", "judge", "evidence", "runs", "reports"]:
+    for name in ["plan", "task_graph", "handoff", "judge", "evidence", "runs", "reports", "guidance"]:
         (root / name).mkdir(parents=True, exist_ok=True)
 
 
