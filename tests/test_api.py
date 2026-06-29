@@ -244,6 +244,141 @@ def test_real_goal_without_task_adapter_stops_before_fake_training(tmp_path: Pat
     assert summary["status"] == "needs_setup"
 
 
+def test_api_configures_adapter_and_continues_needs_setup_turn(tmp_path: Path) -> None:
+    app = create_app(tmp_path / "api.sqlite3")
+    client = TestClient(app)
+    repo = tmp_path / "recover_repo"
+    repo.mkdir()
+    callback_script = repo / "write_callback.py"
+    callback_script.write_text(
+        """
+from __future__ import annotations
+
+import argparse
+import json
+from pathlib import Path
+
+parser = argparse.ArgumentParser()
+parser.add_argument("--callback-file", required=True)
+parser.add_argument("--run-id", required=True)
+parser.add_argument("--turn-id", required=True)
+parser.add_argument("--loop-id", required=True)
+args = parser.parse_args()
+
+payload = {
+    "loop_id": args.loop_id,
+    "run_id": args.run_id,
+    "turn_id": args.turn_id,
+    "status": "succeeded",
+    "metrics": {"score": 0.72},
+    "summary": "real command adapter callback"
+}
+Path(args.callback_file).write_text(json.dumps(payload), encoding="utf-8")
+""".lstrip(),
+        encoding="utf-8",
+    )
+    goal = {
+        "loop_id": "recover_adapter_loop",
+        "objective": "Recover from missing adapter without rerunning the Codex turn",
+        "repo_path": str(repo),
+        "target_value": 0.7,
+        "runner_kind": "codex-cli",
+        "task_adapter_mode": "none",
+    }
+    assert client.post("/api/v1/goals", json=goal).status_code == 200
+    needs_setup = client.post("/api/v1/loops/recover_adapter_loop/step", params={"runner": "local"})
+    assert needs_setup.status_code == 200
+    assert needs_setup.json()["status"] == "needs_setup"
+    assert needs_setup.json()["turn"] == 1
+
+    response = client.post(
+        "/api/v1/loops/recover_adapter_loop/task-adapter",
+        json={
+            "task_adapter_mode": "command",
+            "validation_command": "",
+            "task_command": "python write_callback.py --callback-file {callback_file} --run-id {run_id} --turn-id {turn_id} --loop-id {loop_id}",
+            "continue_current_turn": True,
+        },
+        params={"runner": "local"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "completed"
+    assert response.json()["turn"] == 1
+    assert response.json()["best_metric"] == 0.72
+    summary = client.get("/api/v1/loops/recover_adapter_loop/summary").json()
+    assert summary["task_adapter_mode"] == "command"
+    assert summary["task_runs"][0]["run_id"] == "run_0001"
+    assert summary["task_runs"][0]["status"] == "succeeded"
+    events = [event["event_type"] for event in client.get("/api/v1/loops/recover_adapter_loop/events").json()]
+    assert events.count("codex.planner.completed") == 1
+    assert "task.adapter.configured" in events
+    assert "task.adapter.validation.completed" in events
+    assert "task.adapter.continuing_current_turn" in events
+    assert "git.commit.created" in events
+    assert "run.completed" in events
+
+
+def test_api_adapter_recovery_rechecks_validation_before_commit(tmp_path: Path) -> None:
+    app = create_app(tmp_path / "api.sqlite3")
+    client = TestClient(app)
+    repo = tmp_path / "validation_recover_repo"
+    goal = {
+        "loop_id": "adapter_validation_loop",
+        "objective": "Stop recovery when adapter quick check fails",
+        "repo_path": str(repo),
+        "target_value": 0.7,
+        "runner_kind": "codex-cli",
+        "task_adapter_mode": "none",
+    }
+    assert client.post("/api/v1/goals", json=goal).status_code == 200
+    assert client.post("/api/v1/loops/adapter_validation_loop/step", params={"runner": "local"}).json()["status"] == "needs_setup"
+
+    response = client.post(
+        "/api/v1/loops/adapter_validation_loop/task-adapter",
+        json={
+            "task_adapter_mode": "command",
+            "validation_command": "python -c \"import sys; sys.exit(3)\"",
+            "task_command": "python train.py --callback-file {callback_file} --run-id {run_id} --turn-id {turn_id} --loop-id {loop_id}",
+            "continue_current_turn": True,
+        },
+        params={"runner": "local"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "failed"
+    assert response.json()["last_decision"] == "failed_needs_action"
+    events = [event["event_type"] for event in client.get("/api/v1/loops/adapter_validation_loop/events").json()]
+    assert "task.adapter.validation.completed" in events
+    assert "task.adapter.validation_failed" in events
+    assert "git.commit.created" not in events
+    assert "run.started" not in events
+    assert client.get("/api/v1/loops/adapter_validation_loop/tasks").json()["task_runs"] == []
+
+
+def test_api_rejects_adapter_configuration_while_running(tmp_path: Path) -> None:
+    app = create_app(tmp_path / "api.sqlite3")
+    client = TestClient(app)
+    goal = {
+        "loop_id": "adapter_running_loop",
+        "objective": "Do not change adapter while external work is running",
+        "repo_path": str(tmp_path / "adapter_running_repo"),
+        "target_value": 0.6,
+        "execution_mode": "async",
+        "task_adapter_mode": "demo",
+    }
+    assert client.post("/api/v1/goals", json=goal).status_code == 200
+    assert client.post("/api/v1/loops/adapter_running_loop/step").json()["status"] == "waiting_callback"
+
+    response = client.post(
+        "/api/v1/loops/adapter_running_loop/task-adapter",
+        json={"task_adapter_mode": "command", "task_command": "python train.py"},
+    )
+
+    assert response.status_code == 409
+    assert "cannot configure TaskRun adapter while loop status is" in response.text
+
+
 def test_goal_command_adapter_requires_task_command(tmp_path: Path) -> None:
     app = create_app(tmp_path / "api.sqlite3")
     client = TestClient(app)
@@ -512,10 +647,18 @@ def test_web_ui_static_routes(tmp_path: Path) -> None:
     assert "Loop timeline" in app_js
     assert "renderRepoOptions" in app_js
     assert "runnerText" in app_js
+    assert 'start: status === "ready"' in app_js
     assert "Demo simulation backend" in app_js
     assert "No hidden fake training is running" in app_js
     assert "Codex sessions" in app_js
     assert "task.adapter.required" in app_js
+    assert "task-adapter-form" in app_js
+    assert "/task-adapter" in app_js
+    assert "Configure and continue" in app_js
+    assert "Adapter configured; current turn continued" in app_js
+    assert "task.adapter.configured" in app_js
+    assert "task.adapter.validation.completed" in app_js
+    assert "{loop_id}" in app_js
     assert "needs_setup" in app_js
     assert "Artifact directory missing" in app_js
     assert "initLayoutResize" in app_js

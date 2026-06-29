@@ -4,6 +4,7 @@ import socket
 import subprocess
 import sys
 import time
+import urllib.request
 from pathlib import Path
 
 import pytest
@@ -31,6 +32,17 @@ def _wait_for_server(base_url: str) -> None:
             last_error = exc
         time.sleep(0.1)
     raise RuntimeError(f"server did not start: {last_error}")
+
+
+def _post_json(base_url: str, path: str, payload: str) -> None:
+    request = urllib.request.Request(
+        f"{base_url}{path}",
+        data=payload.encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    with urllib.request.urlopen(request, timeout=5) as response:
+        assert response.status == 200
 
 
 def test_web_buttons_and_action_messages_in_real_browser(tmp_path: Path) -> None:
@@ -158,6 +170,67 @@ def test_web_buttons_and_action_messages_in_real_browser(tmp_path: Path) -> None
             expect(page.get_by_text("Collect callback succeeded: completed.")).to_be_visible()
             expect(page.get_by_text("Target reached")).to_be_visible()
             expect(page.get_by_text("task_graph/turn_0001.json")).to_be_visible()
+
+            recover_repo = tmp_path / "browser_recover_repo"
+            recover_repo.mkdir()
+            (recover_repo / "write_callback.py").write_text(
+                """
+from __future__ import annotations
+
+import argparse
+import json
+from pathlib import Path
+
+parser = argparse.ArgumentParser()
+parser.add_argument("--callback-file", required=True)
+parser.add_argument("--run-id", required=True)
+parser.add_argument("--turn-id", required=True)
+parser.add_argument("--loop-id", required=True)
+args = parser.parse_args()
+payload = {
+    "loop_id": args.loop_id,
+    "run_id": args.run_id,
+    "turn_id": args.turn_id,
+    "status": "succeeded",
+    "metrics": {"score": 0.72},
+    "summary": "browser command adapter callback"
+}
+Path(args.callback_file).write_text(json.dumps(payload), encoding="utf-8")
+""".lstrip(),
+                encoding="utf-8",
+            )
+            _post_json(
+                base_url,
+                "/api/v1/loops",
+                f"""{{
+                  "loop_id": "browser_recover_loop",
+                  "objective": "Recover a loop that started without a TaskRun adapter",
+                  "repo_path": "{recover_repo}",
+                  "target_value": 0.7,
+                  "runner_kind": "local",
+                  "task_adapter_mode": "none"
+                }}""",
+            )
+            page.get_by_role("button", name="Refresh").click()
+            page.get_by_role("button", name="browser_recover_loop ready").click()
+            expect(page.get_by_text("No long-work adapter configured")).to_be_visible()
+            expect(page.get_by_role("button", name="Step")).to_be_enabled()
+            page.get_by_role("button", name="Step").click()
+            expect(page.get_by_text("Step succeeded: needs setup.")).to_be_visible()
+            expect(page.get_by_text("TaskRun adapter required").first).to_be_visible()
+            expect(page.get_by_role("button", name="Start", exact=True)).to_be_disabled()
+            expect(page.get_by_role("button", name="Step", exact=True)).to_be_disabled()
+            expect(page.get_by_text("Connect real external work to this accepted turn")).to_be_visible()
+            expect(page.get_by_label("Adapter type")).to_have_value("command")
+            page.get_by_label("External work command").fill(
+                "python write_callback.py --callback-file {callback_file} --run-id {run_id} --turn-id {turn_id} --loop-id {loop_id}"
+            )
+            page.get_by_role("button", name="Configure and continue").click()
+            expect(page.get_by_text("Adapter configured; current turn continued: completed.")).to_be_visible()
+            expect(page.get_by_text("Target reached")).to_be_visible()
+            expect(page.get_by_text("Command TaskRun adapter")).to_be_visible()
+            expect(page.locator(".task-run").first).to_contain_text("succeeded")
+            expect(page.get_by_text("Adapter quick check passed")).to_be_visible()
             browser.close()
     finally:
         server.terminate()

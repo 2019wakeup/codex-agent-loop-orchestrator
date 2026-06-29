@@ -27,7 +27,12 @@ class TaskRunner:
     def run_training_sync(self, contract: LoopContract, turn_id: str, run_id: str) -> CallbackPayload:
         callback_file = contract.artifact_root / "runs" / f"{run_id}_callback.json"
         callback_file.parent.mkdir(parents=True, exist_ok=True)
-        command = contract.commands.train.format(callback_file=callback_file, run_id=run_id, turn_id=turn_id)
+        command = contract.commands.train.format(
+            callback_file=callback_file,
+            run_id=run_id,
+            turn_id=turn_id,
+            loop_id=contract.loop_id,
+        )
         result = subprocess.run(
             command,
             cwd=contract.repo_path,
@@ -55,7 +60,12 @@ class TaskRunner:
         callback_file = contract.artifact_root / "runs" / f"{run_id}_callback.json"
         stdout_file = contract.artifact_root / "runs" / f"{run_id}.log"
         callback_file.parent.mkdir(parents=True, exist_ok=True)
-        command = contract.commands.train.format(callback_file=callback_file, run_id=run_id, turn_id=turn_id)
+        command = contract.commands.train.format(
+            callback_file=callback_file,
+            run_id=run_id,
+            turn_id=turn_id,
+            loop_id=contract.loop_id,
+        )
         out = stdout_file.open("w", encoding="utf-8")
         process = subprocess.Popen(
             command,

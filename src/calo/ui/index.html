@@ -114,8 +114,8 @@
               </div>
               <div class="field-block wide-field">
                 <label for="goal-task-command">Long-work adapter command</label>
-                <input id="goal-task-command" name="task_command" type="text" value="" placeholder="python train.py --callback-file {callback_file} --run-id {run_id} --turn-id {turn_id}" />
-                <small class="field-help">Required for command mode. CALO fills placeholders for callback and audit wiring.</small>
+                <input id="goal-task-command" name="task_command" type="text" value="" placeholder="python train.py --callback-file {callback_file} --run-id {run_id} --turn-id {turn_id} --loop-id {loop_id}" />
+                <small class="field-help">Required for command mode. CALO fills callback, run, turn, and loop placeholders.</small>
               </div>
             </div>
           </details>

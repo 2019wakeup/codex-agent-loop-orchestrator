@@ -10,12 +10,14 @@ from .codex_runner import CodexRunner, LocalDeterministicCodexRunner
 from .git_adapter import GitAdapter
 from .models import (
     CallbackPayload,
+    Commands,
     Decision,
     LoopContract,
     LoopState,
     LoopStatus,
     OperatorGuidance,
     OperatorGuidanceRequest,
+    TaskAdapterRequest,
     TaskGraph,
     TaskNode,
     TaskRunRecord,
@@ -25,6 +27,10 @@ from .models import (
 from .policy import PolicyEngine
 from .store import StateStore
 from .task_runner import TaskRunner, write_fake_training_script
+
+
+DEMO_VALIDATION_COMMAND = "python -m py_compile target_app.py"
+DEMO_TASK_COMMAND = "python fake_train.py --callback-file {callback_file} --run-id {run_id} --turn-id {turn_id}"
 
 
 class LoopController:
@@ -178,13 +184,146 @@ class LoopController:
             )
             return state
 
+        return self._commit_and_launch_task_run(
+            contract,
+            state,
+            turn_id,
+            plan.objective,
+            should_launch_training=first_policy.should_launch_training,
+            next_status=first_policy.next_status,
+            decision=first_policy.decision,
+        )
+
+    def configure_task_adapter(self, contract: LoopContract, request: TaskAdapterRequest) -> LoopState:
+        state = self.store.load_state(contract.loop_id)
+        if state.status not in {LoopStatus.NEEDS_SETUP, LoopStatus.READY, LoopStatus.PAUSED, LoopStatus.REVIEW_REQUIRED}:
+            raise ValueError(f"cannot configure TaskRun adapter while loop status is {state.status}")
+        previous_mode = contract.task_adapter_mode
+        self._apply_task_adapter_request(contract, request)
+        write_json(contract.artifact_root / "contract.json", contract)
+        self.store.save_state(state, contract)
+        self.store.add_event(
+            contract.loop_id,
+            "task.adapter.configured",
+            {
+                "previous_mode": previous_mode,
+                "task_adapter_mode": contract.task_adapter_mode,
+                "validation_command": contract.commands.validation or None,
+                "task_command": contract.commands.train or None,
+                "continue_current_turn": request.continue_current_turn,
+            },
+        )
+        if (
+            request.continue_current_turn
+            and state.status == LoopStatus.NEEDS_SETUP
+            and contract.task_adapter_mode != "none"
+        ):
+            turn_id = f"turn_{state.turn:04d}"
+            if not self._recheck_adapter_validation(contract, state, turn_id):
+                return state
+            objective = self._plan_objective_for_turn(contract, turn_id)
+            self.store.add_event(
+                contract.loop_id,
+                "task.adapter.continuing_current_turn",
+                {
+                    "turn_id": turn_id,
+                    "task_adapter_mode": contract.task_adapter_mode,
+                    "reason": "adapter was configured after policy accepted the current turn",
+                },
+            )
+            return self._commit_and_launch_task_run(
+                contract,
+                state,
+                turn_id,
+                objective,
+                should_launch_training=True,
+                next_status=LoopStatus.READY,
+                decision=Decision.OPERATIONAL_PAUSE,
+            )
+        self._save(contract, state, "loop.adapter.updated", {"task_adapter_mode": contract.task_adapter_mode})
+        return state
+
+    def _apply_task_adapter_request(self, contract: LoopContract, request: TaskAdapterRequest) -> None:
+        mode = request.task_adapter_mode
+        validation_command = request.validation_command if request.validation_command is not None else contract.commands.validation
+        task_command = request.task_command if request.task_command is not None else contract.commands.train
+        validation_command = validation_command.strip() if validation_command else ""
+        task_command = task_command.strip() if task_command else ""
+
+        if mode == "demo":
+            validation_command = validation_command or DEMO_VALIDATION_COMMAND
+            task_command = task_command or DEMO_TASK_COMMAND
+            write_fake_training_script(contract.repo_path)
+            target_app = contract.repo_path / "target_app.py"
+            if not target_app.exists():
+                target_app.write_text("SCORE = 0.50\n\n\ndef score():\n    return SCORE\n", encoding="utf-8")
+        elif mode == "command":
+            if not task_command:
+                raise ValueError("task_command is required when task_adapter_mode is command")
+        else:
+            task_command = ""
+
+        contract.task_adapter_mode = mode
+        contract.commands = Commands(validation=validation_command, train=task_command)
+
+    def _recheck_adapter_validation(self, contract: LoopContract, state: LoopState, turn_id: str) -> bool:
+        validation_passed, validation_output = self.task_runner.validate(contract)
+        validation_path = contract.artifact_root / "evidence" / f"{turn_id}_adapter_validation.txt"
+        write_text(validation_path, validation_output)
+        self.store.add_event(
+            contract.loop_id,
+            "task.adapter.validation.completed",
+            {
+                "turn_id": turn_id,
+                "passed": validation_passed,
+                "validation_path": str(validation_path),
+            },
+        )
+        if validation_passed:
+            return True
+        state.status = LoopStatus.FAILED
+        state.last_decision = Decision.FAILED_NEEDS_ACTION
+        self._save(
+            contract,
+            state,
+            "task.adapter.validation_failed",
+            {
+                "turn_id": turn_id,
+                "reason": "adapter quick check failed; current turn was not committed and no TaskRun was launched",
+                "validation_path": str(validation_path),
+            },
+        )
+        return False
+
+    def _plan_objective_for_turn(self, contract: LoopContract, turn_id: str) -> str:
+        plan_path = contract.artifact_root / "plan" / f"{turn_id}.json"
+        if plan_path.exists():
+            try:
+                objective = read_json(plan_path).get("objective")
+                if objective:
+                    return str(objective)
+            except Exception:
+                pass
+        return contract.objective
+
+    def _commit_and_launch_task_run(
+        self,
+        contract: LoopContract,
+        state: LoopState,
+        turn_id: str,
+        objective: str,
+        *,
+        should_launch_training: bool,
+        next_status: LoopStatus,
+        decision: Decision,
+    ) -> LoopState:
         git = GitAdapter(contract.repo_path)
-        commit_sha = git.commit(f"agent-loop({contract.loop_id}): {turn_id} {plan.objective[:48]}")
+        commit_sha = git.commit(f"agent-loop({contract.loop_id}): {turn_id} {objective[:48]}")
         self.store.add_event(contract.loop_id, "git.commit.created", {"turn_id": turn_id, "sha": commit_sha})
 
-        if not first_policy.should_launch_training:
-            state.status = first_policy.next_status
-            state.last_decision = first_policy.decision
+        if not should_launch_training:
+            state.status = next_status
+            state.last_decision = decision
             self._save(contract, state, "loop.turn.finished", {"turn_id": turn_id})
             return state
 

@@ -14,7 +14,7 @@ from .controller import LoopController
 from .codex_runner import CodexCliRunner, LocalDeterministicCodexRunner
 from .dashboard import build_loop_summary, list_loop_summaries
 from .goal import contract_from_goal
-from .models import CallbackPayload, GoalRequest, LoopContract, LoopStatus, OperatorGuidanceRequest
+from .models import CallbackPayload, GoalRequest, LoopContract, LoopStatus, OperatorGuidanceRequest, TaskAdapterRequest
 from .security import verify_signature
 from .store import StateStore
 
@@ -201,6 +201,16 @@ def create_app(db_path: Path | None = None) -> FastAPI:
         controller = controller_for()
         contract = controller.load_contract(loop_id)
         return controller.submit_operator_guidance(contract, request)
+
+    @app.post("/api/v1/loops/{loop_id}/task-adapter")
+    def configure_task_adapter(loop_id: str, request: TaskAdapterRequest, runner: str | None = None, model: str | None = None):
+        contract = store.load_contract(loop_id)
+        runner_kind, runner_model = runner_defaults(contract, runner, model)
+        controller = controller_for(runner_kind, runner_model)
+        try:
+            return controller.configure_task_adapter(contract, request)
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
 
     @app.post("/api/v1/loops/{loop_id}/runs/{run_id}/terminate")
     def terminate_run(loop_id: str, run_id: str, runner: str = "local", model: str | None = None):

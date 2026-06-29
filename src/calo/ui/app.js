@@ -630,6 +630,46 @@ function describeEvent(event) {
         { label: "next", value: payload.next_step },
       ],
     },
+    "task.adapter.configured": {
+      title: "TaskRun adapter configured",
+      body: "The loop contract now has an explicit adapter choice for external work.",
+      chips: [
+        { label: "previous", value: taskAdapterText(payload.previous_mode) },
+        { label: "current", value: taskAdapterText(payload.task_adapter_mode) },
+        { label: "continue current turn", value: payload.continue_current_turn ? "yes" : "no" },
+      ],
+    },
+    "task.adapter.continuing_current_turn": {
+      title: "Continuing accepted turn",
+      body: payload.reason || "The orchestrator is continuing the already-reviewed turn after adapter setup.",
+      chips: [
+        { label: "turn", value: payload.turn_id },
+        { label: "adapter", value: taskAdapterText(payload.task_adapter_mode) },
+      ],
+    },
+    "task.adapter.validation.completed": {
+      title: payload.passed ? "Adapter quick check passed" : "Adapter quick check failed",
+      body: payload.passed
+        ? "The recovery quick check passed before commit and TaskRun launch."
+        : "The recovery quick check failed before commit and TaskRun launch.",
+      chips: [
+        { label: "turn", value: payload.turn_id },
+        { label: "evidence", value: payload.validation_path },
+      ],
+    },
+    "task.adapter.validation_failed": {
+      title: "Adapter recovery stopped",
+      body: payload.reason || "The adapter quick check failed, so no commit or TaskRun was launched.",
+      chips: [
+        { label: "turn", value: payload.turn_id },
+        { label: "evidence", value: payload.validation_path },
+      ],
+    },
+    "loop.adapter.updated": {
+      title: "Adapter update saved",
+      body: "The loop contract was updated without launching a TaskRun.",
+      chips: [{ label: "adapter", value: taskAdapterText(payload.task_adapter_mode) }],
+    },
     "run.completed": {
       title: `Training run ${labelize(payload.status || "completed")}`,
       body: payload.summary || "The training callback was recorded.",
@@ -730,7 +770,7 @@ function actionConfig(loop) {
   ]);
   const terminalStates = new Set(["completed", "cancelled"]);
   return {
-    start: !terminalStates.has(status) && !activeStates.has(status) && status !== "paused",
+    start: status === "ready",
     step: status === "ready",
     collect: status === "waiting_callback" && loop.callback_ready === true,
     pause: !terminalStates.has(status) && status !== "paused" && status !== "waiting_callback" && status !== "needs_setup",
@@ -1013,6 +1053,105 @@ async function submitGuidance(loop) {
   return response.json();
 }
 
+function renderTaskAdapterSetup(loop) {
+  const setupStates = new Set(["ready", "needs_setup", "paused", "review_required"]);
+  if (!setupStates.has(loop.status) || (loop.status !== "needs_setup" && loop.task_adapter_mode !== "none")) return "";
+  const continueChecked = loop.status === "needs_setup" ? "checked" : "";
+  const continueDisabled = loop.status === "needs_setup" ? "" : "disabled";
+  return `
+    <div class="section-title">TaskRun adapter setup</div>
+    <form id="task-adapter-form" class="adapter-setup-form">
+      <div class="adapter-setup-copy">
+        <strong>${loop.status === "needs_setup" ? "Connect real external work to this accepted turn" : "Connect external work before starting"}</strong>
+        <span>
+          Command mode runs your workload and requires it to write CALO's callback file.
+          Demo mode is only for lifecycle testing.
+        </span>
+      </div>
+      <div class="field-grid">
+        <div class="field-block">
+          <label for="adapter-setup-mode">Adapter type</label>
+          <select id="adapter-setup-mode" name="task_adapter_mode">
+            <option value="command" selected>Command adapter</option>
+            <option value="demo">Demo score adapter</option>
+            <option value="none">No long-work adapter</option>
+          </select>
+          <small id="adapter-setup-help" class="field-help">Run a real command after a Codex turn is accepted.</small>
+        </div>
+        <label class="check-row adapter-continue" for="adapter-continue-current">
+          <input id="adapter-continue-current" name="continue_current_turn" type="checkbox" ${continueChecked} ${continueDisabled} />
+          <span>Continue current accepted turn</span>
+        </label>
+      </div>
+      <div id="adapter-setup-command-fields" class="field-grid">
+        <div class="field-block">
+          <label for="adapter-validation-command">Quick check</label>
+          <input id="adapter-validation-command" name="validation_command" type="text" placeholder="optional, for example: pytest -q" />
+          <small class="field-help">Fast check CALO runs before launching external work. Leave blank to skip.</small>
+        </div>
+        <div class="field-block wide-field">
+          <label for="adapter-task-command">External work command</label>
+          <input id="adapter-task-command" name="task_command" type="text" placeholder="python train.py --callback-file {callback_file} --run-id {run_id} --turn-id {turn_id} --loop-id {loop_id}" />
+          <small class="field-help">{callback_file}, {run_id}, {turn_id}, and {loop_id} are filled by CALO so the run can wake the loop with evidence.</small>
+        </div>
+      </div>
+      <button class="button primary" type="submit">${loop.status === "needs_setup" ? "Configure and continue" : "Save adapter"}</button>
+    </form>
+  `;
+}
+
+function syncDetailAdapterFields() {
+  const form = els.detail.querySelector("#task-adapter-form");
+  if (!form) return;
+  const mode = form.querySelector("#adapter-setup-mode").value;
+  const fields = form.querySelector("#adapter-setup-command-fields");
+  const help = form.querySelector("#adapter-setup-help");
+  const validation = form.querySelector("#adapter-validation-command");
+  const task = form.querySelector("#adapter-task-command");
+  fields.hidden = mode === "none";
+  if (mode === "demo") {
+    help.textContent = "Demo mode writes a tiny score fixture and fake training script. Use it only to test lifecycle wiring.";
+    if (!validation.value.trim()) validation.value = "python -m py_compile target_app.py";
+    if (!task.value.trim()) {
+      task.value = "python fake_train.py --callback-file {callback_file} --run-id {run_id} --turn-id {turn_id}";
+    }
+  } else if (mode === "command") {
+    help.textContent = "Command mode re-runs the quick check, then launches your real external work after the accepted Codex turn.";
+    if (task.value.includes("fake_train.py")) task.value = "";
+  } else {
+    help.textContent = "No external work will launch. CALO will stop again when long-work setup is required.";
+    validation.value = "";
+    task.value = "";
+  }
+}
+
+async function submitTaskAdapter(loop) {
+  const form = els.detail.querySelector("#task-adapter-form");
+  const formData = new FormData(form);
+  const mode = `${formData.get("task_adapter_mode") || "command"}`;
+  const validationCommand = `${formData.get("validation_command") || ""}`.trim();
+  const taskCommand = `${formData.get("task_command") || ""}`.trim();
+  if (mode === "command" && !taskCommand) {
+    throw new Error("Command adapter needs an external work command.");
+  }
+  const payload = {
+    task_adapter_mode: mode,
+    validation_command: validationCommand || null,
+    task_command: taskCommand || null,
+    continue_current_turn: Boolean(formData.get("continue_current_turn")),
+  };
+  const response = await fetch(`/api/v1/loops/${encodeURIComponent(loop.loop_id)}/task-adapter${runnerQuery(loop)}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(text || `adapter setup failed with HTTP ${response.status}`);
+  }
+  return response.json();
+}
+
 function render() {
   els.loopCount.textContent = `${state.loops.length}`;
   els.loops.innerHTML = "";
@@ -1161,6 +1300,7 @@ function renderDetail(loop) {
         <button class="button danger" data-action="terminate-run" ${actions.terminate ? "" : "disabled"}>Terminate TaskRun</button>
       </div>
       <div id="action-message" class="action-message ${escapeHtml(state.actionMessageKind)}" role="status" aria-live="polite">${escapeHtml(state.actionMessage)}</div>
+      ${renderTaskAdapterSetup(loop)}
       <div class="section-title">Codex sessions</div>
       ${renderCodexSessions(loop.recent_events || [])}
       <div class="section-title">Guide next Codex turn</div>
@@ -1242,6 +1382,36 @@ function renderDetail(loop) {
       submit.disabled = false;
     }
   });
+  const adapterForm = els.detail.querySelector("#task-adapter-form");
+  if (adapterForm) {
+    const mode = adapterForm.querySelector("#adapter-setup-mode");
+    mode.addEventListener("change", syncDetailAdapterFields);
+    syncDetailAdapterFields();
+    adapterForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const submit = adapterForm.querySelector('button[type="submit"]');
+      submit.disabled = true;
+      const actionMessage = els.detail.querySelector("#action-message");
+      actionMessage.textContent = loop.status === "needs_setup" ? "Configuring adapter and continuing current turn..." : "Saving adapter...";
+      actionMessage.className = "action-message";
+      try {
+        const result = await submitTaskAdapter(loop);
+        state.actionMessage =
+          loop.status === "needs_setup"
+            ? `Adapter configured; current turn continued: ${labelize(result.status)}.`
+            : `Adapter configured: ${labelize(result.status)}.`;
+        state.actionMessageKind = "success";
+        await loadDashboard();
+      } catch (error) {
+        state.actionMessage = `Adapter setup failed: ${error.message}`;
+        state.actionMessageKind = "error";
+        actionMessage.textContent = state.actionMessage;
+        actionMessage.className = "action-message error";
+      } finally {
+        submit.disabled = false;
+      }
+    });
+  }
 }
 
 els.refresh.addEventListener("click", loadDashboard);

@@ -139,6 +139,13 @@ class OperatorGuidanceRequest(BaseModel):
         return stripped
 
 
+class TaskAdapterRequest(BaseModel):
+    task_adapter_mode: Literal["none", "command", "demo"] = "command"
+    validation_command: str | None = None
+    task_command: str | None = None
+    continue_current_turn: bool = True
+
+
 class OperatorGuidance(BaseModel):
     loop_id: str
     message: str

@@ -1025,7 +1025,8 @@ summary:focus-visible {
   white-space: pre-wrap;
 }
 
-.guidance-form {
+.guidance-form,
+.adapter-setup-form {
   display: grid;
   gap: 11px;
   padding: 13px;
@@ -1034,6 +1035,41 @@ summary:focus-visible {
   background:
     linear-gradient(135deg, rgba(20, 125, 100, 0.08), transparent 36%),
     #ffffff;
+}
+
+.adapter-setup-form {
+  border-color: #f2d49c;
+  background:
+    linear-gradient(135deg, rgba(166, 96, 0, 0.08), transparent 36%),
+    #ffffff;
+}
+
+.adapter-setup-copy {
+  display: grid;
+  gap: 4px;
+}
+
+.adapter-setup-copy strong {
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 780;
+}
+
+.adapter-setup-copy span {
+  max-width: 78ch;
+  color: #516173;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.adapter-continue {
+  align-self: end;
+  width: fit-content;
+  margin-bottom: 2px;
+}
+
+#adapter-setup-command-fields[hidden] {
+  display: none;
 }
 
 .guidance-controls {
