@@ -601,23 +601,32 @@ def test_web_ui_static_routes(tmp_path: Path) -> None:
     html = client.get("/ui/")
     assert html.status_code == 200
     assert "Codex Agent Loop Orchestrator" in html.text
-    assert "Local control plane for short Codex turns" in html.text
+    assert '<html lang="zh-CN">' in html.text
+    assert "短 Codex turn 与外部长任务的本地控制台。" in html.text
+    assert 'id="language-toggle"' in html.text
+    assert ">English</button>" in html.text
+    assert 'data-i18n="Local control plane for short Codex turns and externally owned long work."' in html.text
     assert 'id="goal-form"' in html.text
     assert 'id="layout-splitter"' in html.text
     assert 'role="separator"' in html.text
     assert "Goal brief" in html.text
+    assert "Loop 队列" in html.text
     assert "<select id=\"goal-repo\"" in html.text
     assert "Browse" in html.text
-    assert "Use folder" in html.text
-    assert "Create loop" in html.text
+    assert "使用此文件夹" in html.text
+    assert 'data-i18n="Use folder"' in html.text
+    assert "创建 Loop" in html.text
+    assert 'data-i18n="Create loop"' in html.text
     assert "Execution backend" in html.text
     assert "Real Codex CLI" in html.text
     assert "Demo simulation" in html.text
     assert "TaskRun adapter" in html.text
-    assert "No long-work adapter yet" in html.text
+    assert "尚未配置 long-work adapter" in html.text
+    assert 'data-i18n="No long-work adapter yet"' in html.text
     assert "Command adapter" in html.text
     assert "Demo score adapter" in html.text
-    assert "Advanced settings" in html.text
+    assert "高级设置" in html.text
+    assert 'data-i18n="Advanced settings"' in html.text
     assert "Adapter commands" in html.text
     assert "Quick check command" in html.text
     assert "Long-work adapter command" in html.text
@@ -632,6 +641,9 @@ def test_web_ui_static_routes(tmp_path: Path) -> None:
     assert "collect-callback" in app_js
     assert "Collect callback" in app_js
     assert "runnerQuery" in app_js
+    assert "calo.language" in app_js
+    assert "function applyI18n" in app_js
+    assert "zh-CN" in app_js
     assert 'status !== "waiting_callback"' in app_js
     assert "external TaskRun was not terminated" in app_js
     assert "renderTaskGraph" in app_js
@@ -651,6 +663,9 @@ def test_web_ui_static_routes(tmp_path: Path) -> None:
     assert "Demo simulation backend" in app_js
     assert "No hidden fake training is running" in app_js
     assert "Codex sessions" in app_js
+    assert "detailTab" in app_js
+    assert "data-detail-tab" in app_js
+    assert "detail-tab-panel" in app_js
     assert "task.adapter.required" in app_js
     assert "task-adapter-form" in app_js
     assert "/task-adapter" in app_js
@@ -678,6 +693,9 @@ def test_web_ui_static_routes(tmp_path: Path) -> None:
     assert ".repo-browser" in css.text
     assert ".artifact-list" in css.text
     assert ".task-graph" in css.text
+    assert ".detail-command-center" in css.text
+    assert ".detail-tab-list" in css.text
+    assert ".detail-scroll" in css.text
 
 
 def test_web_ui_context_defaults_to_served_workspace(tmp_path: Path) -> None:

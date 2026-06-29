@@ -1,10 +1,10 @@
 <!doctype html>
-<html lang="en">
+<html lang="zh-CN">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Codex Agent Loop Orchestrator</title>
-    <link rel="stylesheet" href="/ui/styles.css?v=20260629-filesystem-browser" />
+    <link rel="stylesheet" href="/ui/styles.css?v=20260630-i18n" />
   </head>
   <body>
     <header class="topbar">
@@ -12,12 +12,13 @@
         <div class="brand-mark" aria-hidden="true">CA</div>
         <div>
           <h1>Codex Agent Loop Orchestrator</h1>
-          <p class="subtitle">Local control plane for short Codex turns and externally owned long work.</p>
+          <p class="subtitle" data-i18n="Local control plane for short Codex turns and externally owned long work.">短 Codex turn 与外部长任务的本地控制台。</p>
         </div>
       </div>
       <div class="topbar-actions">
-        <span id="health" class="health">Connecting</span>
-        <button id="refresh" class="button" type="button">Refresh</button>
+        <button id="language-toggle" class="button language-toggle" type="button">English</button>
+        <span id="health" class="health" data-i18n="Connecting">连接中</span>
+        <button id="refresh" class="button" type="button" data-i18n="Refresh">刷新</button>
       </div>
     </header>
 
@@ -25,97 +26,97 @@
       <section class="panel loops-panel" aria-label="Loops">
         <div class="panel-header">
           <div>
-            <h2>Loop Queue</h2>
-            <p class="panel-note">Create a goal, then hand off long work without keeping Codex awake.</p>
+            <h2 data-i18n="Loop Queue">Loop 队列</h2>
+            <p class="panel-note" data-i18n="Create a goal, then hand off long work without keeping Codex awake.">创建 goal，然后把长任务交给外部执行，Codex 不需要一直醒着。</p>
           </div>
           <span id="loop-count" class="muted">0</span>
         </div>
         <form id="goal-form" class="goal-form">
           <div class="field-block">
-            <label for="goal-objective">Goal brief</label>
+            <label for="goal-objective" data-i18n="Goal brief">Goal brief</label>
             <textarea id="goal-objective" name="objective" rows="3" required></textarea>
           </div>
           <div class="field-grid">
             <div class="field-block wide-field">
-              <label for="goal-repo">Repository</label>
+              <label for="goal-repo" data-i18n="Repository">Repository</label>
               <div class="repo-picker-row">
                 <select id="goal-repo" name="repo_path" required></select>
-                <button id="repo-browse-toggle" class="button" type="button">Browse</button>
+                <button id="repo-browse-toggle" class="button" type="button" data-i18n="Browse">Browse</button>
               </div>
-              <small class="field-help">Choose a recent repository or browse the machine filesystem.</small>
+              <small class="field-help" data-i18n="Choose a recent repository or browse the machine filesystem.">选择最近的 repository，或 Browse 整台机器的文件系统。</small>
               <div id="repo-browser" class="repo-browser" hidden>
                 <div class="repo-browser-head">
-                  <button id="repo-parent" class="button" type="button">Up</button>
-                  <button id="repo-root" class="button" type="button">Root</button>
+                  <button id="repo-parent" class="button" type="button" data-i18n="Up">上一级</button>
+                  <button id="repo-root" class="button" type="button" data-i18n="Root">Root</button>
                   <code id="repo-browser-path"></code>
-                  <button id="repo-use" class="button primary" type="button">Use folder</button>
+                  <button id="repo-use" class="button primary" type="button" data-i18n="Use folder">使用此文件夹</button>
                 </div>
                 <div id="repo-browser-list" class="repo-browser-list" role="list"></div>
                 <div id="repo-browser-message" class="form-message" role="status" aria-live="polite"></div>
               </div>
             </div>
             <div class="field-block">
-              <label for="goal-runner">Execution backend</label>
+              <label for="goal-runner" data-i18n="Execution backend">Execution backend</label>
               <select id="goal-runner" name="runner">
-                <option value="codex-cli">Real Codex CLI</option>
-                <option value="local">Demo simulation</option>
+                <option value="codex-cli" data-i18n="Real Codex CLI">Real Codex CLI</option>
+                <option value="local" data-i18n="Demo simulation">Demo simulation</option>
               </select>
-              <small class="field-help">Stored on the loop and used by Start, Step, and callback judging.</small>
+              <small class="field-help" data-i18n="Stored on the loop and used by Start, Step, and callback judging.">存到 Loop 上，供 Start、Step 和 callback judging 使用。</small>
             </div>
             <div class="field-block">
-              <label for="goal-task-adapter">TaskRun adapter</label>
+              <label for="goal-task-adapter" data-i18n="TaskRun adapter">TaskRun adapter</label>
               <select id="goal-task-adapter" name="task_adapter_mode">
-                <option value="none">No long-work adapter yet</option>
-                <option value="command">Command adapter</option>
-                <option value="demo">Demo score adapter</option>
+                <option value="none" data-i18n="No long-work adapter yet">尚未配置 long-work adapter</option>
+                <option value="command" data-i18n="Command adapter">Command adapter</option>
+                <option value="demo" data-i18n="Demo score adapter">Demo score adapter</option>
               </select>
-              <small class="field-help">Controls whether accepted changes can launch external work after a Codex turn.</small>
+              <small class="field-help" data-i18n="Controls whether accepted changes can launch external work after a Codex turn.">控制 Codex turn 被接受后是否能启动外部任务。</small>
             </div>
             <div class="field-block">
-              <label for="goal-model">Model</label>
-              <input id="goal-model" name="model" type="text" placeholder="backend default" />
+              <label for="goal-model" data-i18n="Model">Model</label>
+              <input id="goal-model" name="model" type="text" placeholder="backend default" data-i18n-placeholder="backend default" />
             </div>
             <div class="field-block">
-              <label for="goal-loop-id">Loop ID</label>
-              <input id="goal-loop-id" name="loop_id" type="text" placeholder="optional" />
+              <label for="goal-loop-id" data-i18n="Loop ID">Loop ID</label>
+              <input id="goal-loop-id" name="loop_id" type="text" placeholder="optional" data-i18n-placeholder="optional" />
             </div>
             <div class="field-block">
-              <label for="goal-target">Target score</label>
+              <label for="goal-target" data-i18n="Target score">目标 score</label>
               <input id="goal-target" name="target_value" type="number" min="0" step="0.01" value="0.7" required />
             </div>
             <div class="field-block">
-              <label for="goal-turns">Max turns</label>
+              <label for="goal-turns" data-i18n="Max turns">Max turns</label>
               <input id="goal-turns" name="max_turns" type="number" min="1" step="1" value="3" required />
             </div>
           </div>
           <details class="advanced-settings">
-            <summary>Advanced settings</summary>
+            <summary data-i18n="Advanced settings">高级设置</summary>
             <div class="field-grid">
               <div class="field-block">
-                <label for="goal-target-metric">Target metric</label>
+                <label for="goal-target-metric" data-i18n="Target metric">Target metric</label>
                 <input id="goal-target-metric" name="target_metric" type="text" value="score" />
               </div>
               <div class="field-block">
-                <label for="goal-patience">Patience</label>
-                <input id="goal-patience" name="patience" type="number" min="1" step="1" placeholder="max turns" />
+                <label for="goal-patience" data-i18n="Patience">Patience</label>
+                <input id="goal-patience" name="patience" type="number" min="1" step="1" placeholder="max turns" data-i18n-placeholder="max turns" />
               </div>
               <div class="field-block">
-                <label for="goal-min-delta">Min delta</label>
+                <label for="goal-min-delta" data-i18n="Min delta">Min delta</label>
                 <input id="goal-min-delta" name="min_delta" type="number" min="0" step="0.001" value="0.001" />
               </div>
             </div>
-            <div class="advanced-divider">Adapter commands</div>
-            <p id="adapter-help" class="advanced-help">No long-work adapter is configured. CALO can run a short Codex turn, then stops before launching external work.</p>
+            <div class="advanced-divider" data-i18n="Adapter commands">Adapter commands</div>
+            <p id="adapter-help" class="advanced-help" data-i18n="No long-work adapter is configured. CALO can run a short Codex turn, then stops before launching external work.">尚未配置 long-work adapter。CALO 可以跑一个短 Codex turn，然后在启动外部任务前停止。</p>
             <div id="adapter-command-fields" class="field-grid adapter-command-fields" hidden>
               <div class="field-block">
-                <label for="goal-validation-command">Quick check command</label>
-                <input id="goal-validation-command" name="validation_command" type="text" value="" placeholder="optional, for example: pytest -q" />
-                <small class="field-help">Fast command CALO runs before launching long work.</small>
+                <label for="goal-validation-command" data-i18n="Quick check command">Quick check command</label>
+                <input id="goal-validation-command" name="validation_command" type="text" value="" placeholder="optional, for example: pytest -q" data-i18n-placeholder="optional, for example: pytest -q" />
+                <small class="field-help" data-i18n="Fast command CALO runs before launching long work.">启动长任务前由 CALO 执行的快速检查命令。</small>
               </div>
               <div class="field-block wide-field">
-                <label for="goal-task-command">Long-work adapter command</label>
+                <label for="goal-task-command" data-i18n="Long-work adapter command">Long-work adapter command</label>
                 <input id="goal-task-command" name="task_command" type="text" value="" placeholder="python train.py --callback-file {callback_file} --run-id {run_id} --turn-id {turn_id} --loop-id {loop_id}" />
-                <small class="field-help">Required for command mode. CALO fills callback, run, turn, and loop placeholders.</small>
+                <small class="field-help" data-i18n="Required for command mode. CALO fills callback, run, turn, and loop placeholders.">Command mode 必填。CALO 会填充 callback、run、turn 和 loop 占位符。</small>
               </div>
             </div>
           </details>
@@ -123,18 +124,18 @@
             <div class="check-group">
               <label class="check-row" for="goal-async">
                 <input id="goal-async" name="async" type="checkbox" />
-                <span>Async mode</span>
+                <span data-i18n="Async mode">Async mode</span>
               </label>
               <label class="check-row" for="goal-review">
                 <input id="goal-review" name="require_diff_review" type="checkbox" />
-                <span>Diff review</span>
+                <span data-i18n="Diff review">Diff review</span>
               </label>
               <label class="check-row" for="goal-auto-commit">
                 <input id="goal-auto-commit" name="auto_commit" type="checkbox" checked />
-                <span>Auto commit</span>
+                <span data-i18n="Auto commit">Auto commit</span>
               </label>
             </div>
-            <button id="goal-submit" class="button primary" type="submit">Create loop</button>
+            <button id="goal-submit" class="button primary" type="submit" data-i18n="Create loop">创建 Loop</button>
           </div>
           <div id="goal-message" class="form-message" role="status" aria-live="polite"></div>
         </form>
@@ -156,12 +157,12 @@
       <section class="panel detail-panel" aria-label="Loop detail">
         <div class="panel-header">
           <div>
-            <h2 id="detail-title">Loop Detail</h2>
-            <p class="panel-note">Current phase, next action, evidence, and operator guidance.</p>
+            <h2 id="detail-title" data-i18n-empty="Loop Detail">Loop 详情</h2>
+            <p class="panel-note" data-i18n="Current phase, next action, evidence, and operator guidance.">当前阶段、下一步、evidence 和 operator guidance。</p>
           </div>
-          <span id="detail-status" class="status neutral">No loop</span>
+          <span id="detail-status" class="status neutral" data-i18n-empty="No loop">未选择 Loop</span>
         </div>
-        <div id="detail" class="detail-empty">No loop selected.</div>
+        <div id="detail" class="detail-empty" data-i18n="No loop selected.">尚未选择 Loop。</div>
       </section>
     </main>
 
@@ -182,6 +183,6 @@
       </button>
     </template>
 
-    <script src="/ui/app.js?v=20260629-filesystem-browser"></script>
+    <script src="/ui/app.js?v=20260630-i18n"></script>
   </body>
 </html>

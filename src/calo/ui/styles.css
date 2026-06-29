@@ -765,7 +765,7 @@ summary:focus-visible {
 .detail-body {
   display: flex;
   flex-direction: column;
-  gap: 0;
+  gap: 13px;
 }
 
 .runner-banner {
@@ -848,6 +848,80 @@ summary:focus-visible {
   gap: 10px;
 }
 
+.detail-command-center,
+.detail-overview-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.04fr) minmax(320px, 0.96fr);
+  gap: 13px;
+  align-items: start;
+}
+
+.command-primary,
+.command-actions,
+.detail-card {
+  min-width: 0;
+  padding: 13px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: #ffffff;
+}
+
+.command-actions {
+  position: sticky;
+  top: 12px;
+  z-index: 1;
+}
+
+.detail-tabs {
+  display: grid;
+  gap: 10px;
+}
+
+.detail-tab-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 5px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: #f7fafc;
+}
+
+.detail-tab {
+  min-height: 34px;
+  padding: 0 12px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 720;
+}
+
+.detail-tab:hover,
+.detail-tab:focus-visible {
+  border-color: #bfd8ce;
+  color: var(--text);
+  outline: 0;
+}
+
+.detail-tab.active {
+  border-color: #bcd8cf;
+  background: #ffffff;
+  color: var(--accent-strong);
+  box-shadow: 0 1px 2px rgba(15, 44, 37, 0.05);
+}
+
+.detail-tab-panel {
+  min-width: 0;
+}
+
+.detail-scroll {
+  max-height: min(68vh, 760px);
+  overflow: auto;
+}
+
 .stat {
   padding: 11px;
   border: 1px solid var(--line);
@@ -867,7 +941,7 @@ summary:focus-visible {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin: 20px 0 9px;
+  margin: 7px 0 9px;
 }
 
 .section-title::after {
@@ -877,8 +951,13 @@ summary:focus-visible {
   background: var(--line);
 }
 
+.section-title.compact:first-child {
+  margin-top: 0;
+}
+
 .objective-full {
   max-width: 78ch;
+  margin: 0;
   padding: 11px 12px;
   border: 1px solid var(--line);
   border-radius: var(--radius);
@@ -917,7 +996,7 @@ summary:focus-visible {
   position: relative;
   display: flex;
   flex-direction: column;
-  overflow: hidden;
+  overflow: auto;
   border: 1px solid var(--line);
   border-radius: var(--radius);
   background: #ffffff;
@@ -1029,6 +1108,7 @@ summary:focus-visible {
 .adapter-setup-form {
   display: grid;
   gap: 11px;
+  margin-top: 10px;
   padding: 13px;
   border: 1px solid #bfd8ce;
   border-radius: 12px;
@@ -1224,6 +1304,10 @@ summary:focus-visible {
   .panel {
     min-height: auto;
   }
+
+  .command-actions {
+    position: static;
+  }
 }
 
 @media (max-width: 720px) {
@@ -1253,12 +1337,22 @@ summary:focus-visible {
   }
 
   .phase-panel,
+  .detail-command-center,
+  .detail-overview-grid,
   .key-grid,
   .field-grid,
   .guidance-controls,
   .repo-picker-row,
   .repo-browser-head {
     grid-template-columns: 1fr;
+  }
+
+  .detail-scroll {
+    max-height: none;
+  }
+
+  .detail-tab {
+    flex: 1 1 calc(50% - 6px);
   }
 
   .next-action {
