@@ -46,13 +46,23 @@ class LoopController:
         write_json(contract.artifact_root / "contract.json", contract)
         git = GitAdapter(contract.repo_path)
         git.ensure_repo()
-        write_fake_training_script(contract.repo_path)
-        if not (contract.repo_path / "target_app.py").exists():
-            (contract.repo_path / "target_app.py").write_text("SCORE = 0.50\n\n\ndef score():\n    return SCORE\n", encoding="utf-8")
-        git.commit("initial target app")
+        if contract.task_adapter_mode == "demo":
+            write_fake_training_script(contract.repo_path)
+            if not (contract.repo_path / "target_app.py").exists():
+                (contract.repo_path / "target_app.py").write_text("SCORE = 0.50\n\n\ndef score():\n    return SCORE\n", encoding="utf-8")
+            git.commit("initial target app")
         state = LoopState(loop_id=contract.loop_id, status=LoopStatus.READY)
         self.store.save_state(state, contract)
-        self.store.add_event(contract.loop_id, "loop.created", {"contract_path": str(contract.artifact_root / "contract.json")})
+        self.store.add_event(
+            contract.loop_id,
+            "loop.created",
+            {
+                "contract_path": str(contract.artifact_root / "contract.json"),
+                "runner_kind": contract.runner_kind,
+                "runner_model": contract.runner_model,
+                "task_adapter_mode": contract.task_adapter_mode,
+            },
+        )
         write_json(contract.artifact_root / "state.json", state)
         return state
 
@@ -67,6 +77,7 @@ class LoopController:
             LoopStatus.CANCELLED,
             LoopStatus.PAUSED,
             LoopStatus.REVIEW_REQUIRED,
+            LoopStatus.NEEDS_SETUP,
             LoopStatus.WAITING_CALLBACK,
         }
         while state.status not in stop_statuses:
@@ -80,21 +91,39 @@ class LoopController:
         state.turn += 1
         turn_id = f"turn_{state.turn:04d}"
         evidence = self._build_evidence(contract, state, turn_id)
+        runner_meta = self._runner_metadata(contract)
 
         state.status = LoopStatus.PLANNING
-        self._save(contract, state, "codex.planner.started", {"turn_id": turn_id})
+        self._save(contract, state, "codex.planner.started", {"turn_id": turn_id, **runner_meta})
         plan = self.runner.planner(contract.artifact_root, turn_id, evidence)
         graph = self._record_task_graph(contract, plan)
         self.store.add_event(
             contract.loop_id,
             "codex.planner.completed",
-            {"turn_id": turn_id, "plan_path": str(contract.artifact_root / "plan" / f"{turn_id}.json"), "task_graph_path": graph.artifact_path},
+            {
+                "turn_id": turn_id,
+                "plan_path": str(contract.artifact_root / "plan" / f"{turn_id}.json"),
+                "task_graph_path": graph.artifact_path,
+                "last_message_path": str(contract.artifact_root / "plan" / f"{turn_id}_last_message.txt")
+                if runner_meta["runner_kind"] == "codex-cli"
+                else None,
+                **runner_meta,
+            },
         )
 
         state.status = LoopStatus.CODEX_RUNNING
-        self._save(contract, state, "codex.worker.started", {"turn_id": turn_id})
+        self._save(contract, state, "codex.worker.started", {"turn_id": turn_id, **runner_meta})
         worker = self.runner.worker(contract.repo_path, contract.artifact_root, plan)
-        self.store.add_event(contract.loop_id, "codex.worker.completed", worker.model_dump(mode="json"))
+        worker_payload = worker.model_dump(mode="json")
+        worker_payload.update(
+            {
+                "last_message_path": str(contract.artifact_root / "worker" / f"{turn_id}_last_message.txt")
+                if runner_meta["runner_kind"] == "codex-cli"
+                else None,
+                **runner_meta,
+            }
+        )
+        self.store.add_event(contract.loop_id, "codex.worker.completed", worker_payload)
 
         state.status = LoopStatus.VALIDATION_RUNNING
         validation_passed, validation_output = self.task_runner.validate(contract)
@@ -112,7 +141,16 @@ class LoopController:
             latest_metric=latest_metric,
         )
         judge = self.runner.judge(contract.artifact_root, turn_id, judge_evidence)
-        self.store.add_event(contract.loop_id, "codex.judge.completed", judge.model_dump(mode="json"))
+        judge_payload = judge.model_dump(mode="json")
+        judge_payload.update(
+            {
+                "last_message_path": str(contract.artifact_root / "judge" / f"{turn_id}_last_message.txt")
+                if runner_meta["runner_kind"] == "codex-cli"
+                else None,
+                **runner_meta,
+            }
+        )
+        self.store.add_event(contract.loop_id, "codex.judge.completed", judge_payload)
 
         state.status = LoopStatus.POLICY_CHECKING
         first_policy = self.policy.evaluate_after_judge(contract, state, judge)
@@ -121,6 +159,23 @@ class LoopController:
             state.status = first_policy.next_status
             state.last_decision = first_policy.decision
             self._save(contract, state, "loop.turn.finished", {"turn_id": turn_id})
+            return state
+
+        if contract.task_adapter_mode == "none":
+            state.status = LoopStatus.NEEDS_SETUP
+            state.last_decision = Decision.BLOCKED_NEEDS_USER
+            self._save(
+                contract,
+                state,
+                "task.adapter.required",
+                {
+                    "turn_id": turn_id,
+                    "reason": "no TaskRun adapter is configured; long work was not launched and changes were not auto-committed",
+                    "next_step": "choose a command adapter, demo adapter, or submit a manual callback integration before continuing",
+                    "task_adapter_mode": contract.task_adapter_mode,
+                    **runner_meta,
+                },
+            )
             return state
 
         git = GitAdapter(contract.repo_path)
@@ -496,6 +551,17 @@ class LoopController:
         }
         write_json(contract.artifact_root / "evidence" / f"{turn_id}.json", evidence)
         return evidence
+
+    def _runner_metadata(self, contract: LoopContract) -> dict:
+        runner_kind = getattr(self.runner, "runner_kind", contract.runner_kind)
+        runner_label = getattr(self.runner, "runner_label", runner_kind)
+        runner_is_simulated = bool(getattr(self.runner, "runner_is_simulated", runner_kind == "local"))
+        return {
+            "runner_kind": runner_kind,
+            "runner_label": runner_label,
+            "runner_model": contract.runner_model,
+            "runner_is_simulated": runner_is_simulated,
+        }
 
     def _write_final_report(self, contract: LoopContract, state: LoopState, reason: str) -> None:
         report = (

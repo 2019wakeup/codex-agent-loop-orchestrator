@@ -46,8 +46,11 @@ def demo(
         objective=f"Raise fake score to {target}",
         repo_path=workspace,
         target_value=target,
+        runner_kind=runner,
+        runner_model=model,
         iteration_limits=IterationLimits(max_turns=max_turns, patience=max_turns),
         commands=Commands(train="python fake_train.py --callback-file {callback_file} --run-id {run_id} --turn-id {turn_id}"),
+        task_adapter_mode="demo",
     )
     controller = _controller(workspace, runner, model)
     controller.create_loop(contract)
@@ -67,7 +70,14 @@ def init(
     runner: str = typer.Option("local", help="Runner backend: local or codex-cli."),
     model: str | None = typer.Option(None, help="Model for codex-cli runner."),
 ) -> None:
-    contract = LoopContract(loop_id=loop_id, objective=objective, repo_path=workspace, target_value=target)
+    contract = LoopContract(
+        loop_id=loop_id,
+        objective=objective,
+        repo_path=workspace,
+        target_value=target,
+        runner_kind=runner,
+        runner_model=model,
+    )
     state = _controller(workspace, runner, model).create_loop(contract)
     typer.echo(f"created {contract.loop_id} status={state.status}")
 
@@ -97,10 +107,11 @@ def goal(
     max_turns: int = typer.Option(3, help="Maximum loop turns."),
     patience: int | None = typer.Option(None, help="No-improvement patience. Defaults to max_turns."),
     min_delta: float = typer.Option(0.001, help="Minimum metric improvement."),
-    validation_command: str = typer.Option("python -m py_compile target_app.py", help="Fast validation command."),
-    task_command: str = typer.Option(
-        "python fake_train.py --callback-file {callback_file} --run-id {run_id} --turn-id {turn_id}",
-        help="TaskRun command. Supports {callback_file}, {run_id}, and {turn_id}.",
+    validation_command: str | None = typer.Option(None, help="Optional fast validation command."),
+    task_adapter_mode: str = typer.Option("none", help="TaskRun adapter mode: none, command, or demo."),
+    task_command: str | None = typer.Option(
+        None,
+        help="TaskRun command for command mode. Supports {callback_file}, {run_id}, and {turn_id}.",
     ),
     require_diff_review: bool = typer.Option(False, help="Require human review before committing/running."),
     auto_commit: bool = typer.Option(True, help="Allow orchestrator audit commits for accepted changes."),
@@ -109,6 +120,8 @@ def goal(
 ) -> None:
     if execution_mode not in {"sync", "async"}:
         raise typer.BadParameter("execution_mode must be one of: sync, async")
+    if task_adapter_mode not in {"none", "command", "demo"}:
+        raise typer.BadParameter("task_adapter_mode must be one of: none, command, demo")
     goal_request = GoalRequest(
         objective=objective,
         repo_path=repo_path or workspace,
@@ -120,14 +133,19 @@ def goal(
         patience=patience,
         min_delta=min_delta,
         validation_command=validation_command,
+        task_adapter_mode=task_adapter_mode,  # type: ignore[arg-type]
         task_command=task_command,
         require_diff_review=require_diff_review,
         auto_commit=auto_commit,
+        runner_kind=runner,  # type: ignore[arg-type]
+        runner_model=model,
     )
     contract = contract_from_goal(goal_request)
     state = _controller(workspace, runner, model).create_loop(contract)
     typer.echo(f"created {contract.loop_id} from goal brief status={state.status}")
     typer.echo(f"objective={contract.objective}")
+    typer.echo(f"runner={contract.runner_kind}")
+    typer.echo(f"task_adapter={contract.task_adapter_mode}")
     typer.echo(f"contract={contract.artifact_root / 'contract.json'}")
     typer.echo(f"start=calo start {contract.loop_id} --workspace {workspace}")
 

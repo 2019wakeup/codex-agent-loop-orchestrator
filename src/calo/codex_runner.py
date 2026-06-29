@@ -24,6 +24,10 @@ class LocalDeterministicCodexRunner:
     this class without changing the loop controller.
     """
 
+    runner_kind = "local"
+    runner_label = "Local deterministic demo"
+    runner_is_simulated = True
+
     def planner(self, artifact_root: Path, turn_id: str, evidence: dict[str, Any]) -> Plan:
         current_score = evidence.get("latest_metric")
         objective = evidence["contract"]["objective"]
@@ -119,6 +123,10 @@ class CodexCliRunner:
     It uses `codex exec` for short-lived Planner, Worker, and Judge turns. Each
     turn must write the same artifacts as the deterministic local runner.
     """
+
+    runner_kind = "codex-cli"
+    runner_label = "Codex CLI"
+    runner_is_simulated = False
 
     def __init__(self, sandbox: str = "workspace-write", model: str | None = None, timeout_seconds: int = 1800):
         self.sandbox = sandbox

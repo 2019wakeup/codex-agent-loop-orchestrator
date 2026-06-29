@@ -7,16 +7,40 @@ const state = {
   actionMessage: "",
   actionMessageKind: "",
   repoOptions: [],
+  repoBrowserPath: "",
+};
+
+const paneResize = {
+  min: 340,
+  max: 720,
+  rightMin: 480,
+  splitter: 16,
+  storageKey: "calo.leftPaneWidth",
 };
 
 const els = {
+  layout: document.querySelector(".layout"),
+  layoutSplitter: document.querySelector("#layout-splitter"),
   health: document.querySelector("#health"),
   refresh: document.querySelector("#refresh"),
   goalForm: document.querySelector("#goal-form"),
   goalMessage: document.querySelector("#goal-message"),
   goalSubmit: document.querySelector("#goal-submit"),
   goalRepo: document.querySelector("#goal-repo"),
+  repoBrowseToggle: document.querySelector("#repo-browse-toggle"),
+  repoBrowser: document.querySelector("#repo-browser"),
+  repoBrowserPath: document.querySelector("#repo-browser-path"),
+  repoBrowserList: document.querySelector("#repo-browser-list"),
+  repoBrowserMessage: document.querySelector("#repo-browser-message"),
+  repoParent: document.querySelector("#repo-parent"),
+  repoRoot: document.querySelector("#repo-root"),
+  repoUse: document.querySelector("#repo-use"),
   goalRunner: document.querySelector("#goal-runner"),
+  goalTaskAdapter: document.querySelector("#goal-task-adapter"),
+  adapterHelp: document.querySelector("#adapter-help"),
+  adapterCommandFields: document.querySelector("#adapter-command-fields"),
+  goalValidationCommand: document.querySelector("#goal-validation-command"),
+  goalTaskCommand: document.querySelector("#goal-task-command"),
   goalModel: document.querySelector("#goal-model"),
   loops: document.querySelector("#loops"),
   loopCount: document.querySelector("#loop-count"),
@@ -25,6 +49,82 @@ const els = {
   detail: document.querySelector("#detail"),
   rowTemplate: document.querySelector("#loop-row-template"),
 };
+
+function clamp(value, min, max) {
+  return Math.min(Math.max(value, min), max);
+}
+
+function paneBounds() {
+  if (!els.layout) return { min: paneResize.min, max: paneResize.max };
+  const style = window.getComputedStyle(els.layout);
+  const contentWidth =
+    els.layout.clientWidth - Number.parseFloat(style.paddingLeft || "0") - Number.parseFloat(style.paddingRight || "0");
+  const safeMax = Math.min(paneResize.max, contentWidth - paneResize.splitter - paneResize.rightMin);
+  return { min: paneResize.min, max: Math.max(paneResize.min, safeMax) };
+}
+
+function setLeftPaneWidth(width, persist = false) {
+  if (!els.layout || !els.layoutSplitter) return;
+  const { min, max } = paneBounds();
+  const next = Math.round(clamp(width, min, max));
+  els.layout.style.setProperty("--left-pane-width", `${next}px`);
+  els.layoutSplitter.setAttribute("aria-valuemin", `${min}`);
+  els.layoutSplitter.setAttribute("aria-valuemax", `${max}`);
+  els.layoutSplitter.setAttribute("aria-valuenow", `${next}`);
+  if (persist) window.localStorage.setItem(paneResize.storageKey, `${next}`);
+}
+
+function initLayoutResize() {
+  if (!els.layout || !els.layoutSplitter) return;
+  const saved = Number(window.localStorage.getItem(paneResize.storageKey));
+  setLeftPaneWidth(Number.isFinite(saved) && saved > 0 ? saved : 520);
+
+  let resizing = false;
+  const resizeFromClientX = (clientX, persist = false) => {
+    const rect = els.layout.getBoundingClientRect();
+    const style = window.getComputedStyle(els.layout);
+    const paddingLeft = Number.parseFloat(style.paddingLeft || "0");
+    setLeftPaneWidth(clientX - rect.left - paddingLeft, persist);
+  };
+  const finishResize = (event) => {
+    if (!resizing) return;
+    resizing = false;
+    els.layout.classList.remove("is-resizing");
+    resizeFromClientX(event.clientX, true);
+  };
+
+  els.layoutSplitter.addEventListener("pointerdown", (event) => {
+    resizing = true;
+    els.layout.classList.add("is-resizing");
+    els.layoutSplitter.setPointerCapture(event.pointerId);
+    resizeFromClientX(event.clientX);
+  });
+  els.layoutSplitter.addEventListener("pointermove", (event) => {
+    if (resizing) resizeFromClientX(event.clientX);
+  });
+  els.layoutSplitter.addEventListener("pointerup", finishResize);
+  els.layoutSplitter.addEventListener("pointercancel", finishResize);
+  els.layoutSplitter.addEventListener("keydown", (event) => {
+    const current = Number(els.layoutSplitter.getAttribute("aria-valuenow") || "520");
+    if (event.key === "ArrowLeft") {
+      event.preventDefault();
+      setLeftPaneWidth(current - 24, true);
+    } else if (event.key === "ArrowRight") {
+      event.preventDefault();
+      setLeftPaneWidth(current + 24, true);
+    } else if (event.key === "Home") {
+      event.preventDefault();
+      setLeftPaneWidth(paneBounds().min, true);
+    } else if (event.key === "End") {
+      event.preventDefault();
+      setLeftPaneWidth(paneBounds().max, true);
+    }
+  });
+  window.addEventListener("resize", () => {
+    const current = Number(els.layoutSplitter.getAttribute("aria-valuenow") || "520");
+    setLeftPaneWidth(current, true);
+  });
+}
 
 function statusClass(status) {
   return `status ${status || "neutral"}`;
@@ -83,6 +183,75 @@ function formatTokenEstimate(loop) {
 
 function labelize(value) {
   return `${value || "unknown"}`.replaceAll("_", " ");
+}
+
+function runnerText(loopOrKind, fallbackModel = "") {
+  const kind = typeof loopOrKind === "string" ? loopOrKind : loopOrKind?.runner_kind;
+  const model = typeof loopOrKind === "string" ? fallbackModel : loopOrKind?.runner_model;
+  const label = kind === "codex-cli" ? "Real Codex CLI" : "Demo simulation";
+  return model ? `${label} · ${model}` : label;
+}
+
+function taskAdapterText(mode) {
+  const labels = {
+    none: "No long-work adapter",
+    command: "Command adapter",
+    demo: "Demo score adapter",
+  };
+  return labels[mode] || labelize(mode);
+}
+
+function syncTaskAdapterFields() {
+  if (!els.goalTaskAdapter || !els.adapterCommandFields || !els.adapterHelp) return;
+  const mode = els.goalTaskAdapter.value || "none";
+  const runner = els.goalRunner?.value || state.runner || "codex-cli";
+  const showCommands = mode === "command" || mode === "demo";
+  els.adapterCommandFields.hidden = !showCommands;
+  if (mode === "none") {
+    els.adapterHelp.textContent =
+      "No long-work adapter is configured. CALO can run a short Codex turn, then stops before launching external work.";
+    if (els.goalValidationCommand) els.goalValidationCommand.value = "";
+    if (els.goalTaskCommand) els.goalTaskCommand.value = "";
+  } else if (mode === "demo") {
+    els.adapterHelp.textContent =
+      "Demo mode writes a tiny score fixture and fake training script. Use it only to learn the lifecycle, not for real tasks.";
+    if (els.goalValidationCommand && !els.goalValidationCommand.value.trim()) {
+      els.goalValidationCommand.value = "python -m py_compile target_app.py";
+    }
+    if (els.goalTaskCommand && !els.goalTaskCommand.value.trim()) {
+      els.goalTaskCommand.value =
+        "python fake_train.py --callback-file {callback_file} --run-id {run_id} --turn-id {turn_id}";
+    }
+  } else {
+    els.adapterHelp.textContent =
+      "Command mode launches your real external work after a Codex turn. The command must write the callback file.";
+    if (runner === "local") {
+      els.adapterHelp.textContent += " Local backend still uses the deterministic demo Codex runner for Planner, Worker, and Judge.";
+    }
+    if (els.goalTaskCommand && els.goalTaskCommand.value.includes("fake_train.py")) {
+      els.goalTaskCommand.value = "";
+    }
+  }
+}
+
+function syncRunnerDefaults() {
+  if (!els.goalRunner || !els.goalTaskAdapter) return;
+  const runner = els.goalRunner.value;
+  if (runner === "local") {
+    els.goalTaskAdapter.value = "demo";
+  } else if (els.goalTaskAdapter.value === "demo") {
+    els.goalTaskAdapter.value = "none";
+  }
+  syncTaskAdapterFields();
+}
+
+function runnerEvidence(payload) {
+  return renderChips([
+    { label: "backend", value: payload.runner_label || runnerText(payload.runner_kind) },
+    { label: "mode", value: payload.runner_is_simulated ? "simulation" : "real Codex" },
+    { label: "model", value: payload.runner_model },
+    { label: "last message", value: payload.last_message_path },
+  ]);
 }
 
 function shortSha(value) {
@@ -161,6 +330,66 @@ function renderTaskRuns(taskRuns) {
   `;
 }
 
+function renderCodexSessions(events) {
+  const byType = new Map((events || []).map((event) => [event.event_type, event]));
+  const sessions = [
+    {
+      role: "Planner",
+      started: byType.get("codex.planner.started"),
+      completed: byType.get("codex.planner.completed"),
+      artifactKey: "plan_path",
+      body: "Scopes the next turn and writes the task graph.",
+    },
+    {
+      role: "Worker",
+      started: byType.get("codex.worker.started"),
+      completed: byType.get("codex.worker.completed"),
+      artifactKey: null,
+      body: "Applies the approved source changes for this turn.",
+    },
+    {
+      role: "Judge",
+      started: null,
+      completed: byType.get("codex.judge.completed"),
+      artifactKey: null,
+      body: "Reviews evidence and produces an advisory verdict.",
+    },
+  ];
+  if (!events || !events.length) {
+    return '<div class="empty-timeline">No Codex role session has been recorded yet.</div>';
+  }
+  return `
+    <div class="codex-sessions">
+      ${sessions
+        .map((session) => {
+          const completed = session.completed?.payload || null;
+          const started = session.started?.payload || null;
+          const payload = completed || started || {};
+          const status = completed ? "completed" : started ? "running" : "not started";
+          const artifact = session.artifactKey ? payload[session.artifactKey] : payload.last_message_path;
+          return `
+            <article class="codex-session">
+              <div class="codex-session-head">
+                <strong>${escapeHtml(session.role)}</strong>
+                <span class="${statusClass(status === "completed" ? "ready" : status === "running" ? "codex_running" : "neutral")}">${escapeHtml(status)}</span>
+              </div>
+              <p>${escapeHtml(session.body)}</p>
+              <div class="chip-row">
+                ${renderChips([
+                  { label: "backend", value: payload.runner_label || (payload.runner_kind ? runnerText(payload.runner_kind) : null) },
+                  { label: "turn", value: payload.turn_id },
+                  { label: "artifact", value: artifact },
+                  { label: "last message", value: payload.last_message_path },
+                ])}
+              </div>
+            </article>
+          `;
+        })
+        .join("")}
+    </div>
+  `;
+}
+
 function renderArtifacts(artifacts) {
   if (!artifacts || !artifacts.length) {
     return '<div class="empty-timeline">No artifacts are available yet.</div>';
@@ -216,6 +445,10 @@ function statusInsight(loop) {
   const target = `${loop.target_metric} ${formatValue(loop.target_value)}`;
   const messages = {
     ready: ["Ready to start", "The orchestrator can run the next Codex turn when you start it."],
+    needs_setup: [
+      "TaskRun adapter required",
+      "A Codex turn has produced evidence, but CALO stopped before committing or launching long work because no adapter is configured.",
+    ],
     planning: ["Planning next change", "Codex is producing a scoped plan; lifecycle control remains with the orchestrator."],
     codex_running: ["Applying code changes", "The Worker role is executing the approved plan."],
     validation_running: ["Running validation", "Fast checks are running before expensive work is launched."],
@@ -235,6 +468,7 @@ function statusInsight(loop) {
 function nextActionText(loop) {
   const actions = {
     ready: "Start the run or step one turn.",
+    needs_setup: "Choose a command adapter or cancel this loop; no external task is running.",
     training_running: "Wait for training to finish.",
     waiting_callback: loop.callback_ready ? "Collect the callback from the wake path." : "Wait until the wake path exists.",
     paused: "Resume the loop when ready.",
@@ -292,26 +526,33 @@ function describeEvent(event) {
     },
     "codex.planner.completed": {
       title: "Planner finished",
-      body: "Codex produced the next scoped plan for the Worker role.",
+      body: payload.runner_is_simulated
+        ? "The local demo runner generated a deterministic plan. No real Codex session was used."
+        : "Codex CLI produced the next scoped plan for the Worker role.",
       chips: [
         { label: "turn", value: payload.turn_id },
         { label: "plan", value: payload.plan_path },
+        { label: "task graph", value: payload.task_graph_path },
       ],
     },
     "codex.worker.completed": {
       title: "Worker finished",
-      body: "Codex applied the proposed code or artifact changes for this turn.",
+      body: payload.runner_is_simulated
+        ? "The local demo runner applied deterministic fixture changes."
+        : "Codex CLI applied the proposed code or artifact changes for this turn.",
       chips: [
         { label: "turn", value: payload.turn_id },
-        { label: "summary", value: payload.summary_path },
+        { label: "changed", value: (payload.changed_files || []).join(", ") },
       ],
     },
     "codex.judge.completed": {
       title: "Judge finished",
-      body: "Codex evaluated evidence and wrote an advisory decision.",
+      body: payload.runner_is_simulated
+        ? "The local demo runner produced a deterministic judge verdict."
+        : "Codex CLI evaluated evidence and wrote an advisory decision.",
       chips: [
         { label: "turn", value: payload.turn_id },
-        { label: "report", value: payload.judge_path },
+        { label: "verdict", value: labelize(payload.verdict) },
       ],
     },
     "validation.completed": {
@@ -378,6 +619,17 @@ function describeEvent(event) {
         { label: "manifest", value: payload.manifest_path },
       ],
     },
+    "task.adapter.required": {
+      title: "TaskRun adapter required",
+      body:
+        payload.reason ||
+        "The orchestrator refused to launch long-running work because this loop has no TaskRun adapter.",
+      chips: [
+        { label: "turn", value: payload.turn_id },
+        { label: "adapter", value: taskAdapterText(payload.task_adapter_mode) },
+        { label: "next", value: payload.next_step },
+      ],
+    },
     "run.completed": {
       title: `Training run ${labelize(payload.status || "completed")}`,
       body: payload.summary || "The training callback was recorded.",
@@ -434,7 +686,11 @@ function describeEvent(event) {
       ],
     },
   };
-  return { ...fallback, ...(descriptions[type] || {}) };
+  const description = { ...fallback, ...(descriptions[type] || {}) };
+  if (payload.runner_kind) {
+    description.chips = [...(description.chips || []), { label: "backend", value: payload.runner_label || runnerText(payload.runner_kind) }];
+  }
+  return description;
 }
 
 function renderEvents(events) {
@@ -470,13 +726,14 @@ function actionConfig(loop) {
     "training_running",
     "waiting_callback",
     "review_required",
+    "needs_setup",
   ]);
   const terminalStates = new Set(["completed", "cancelled"]);
   return {
     start: !terminalStates.has(status) && !activeStates.has(status) && status !== "paused",
     step: status === "ready",
     collect: status === "waiting_callback" && loop.callback_ready === true,
-    pause: !terminalStates.has(status) && status !== "paused" && status !== "waiting_callback",
+    pause: !terminalStates.has(status) && status !== "paused" && status !== "waiting_callback" && status !== "needs_setup",
     resume: status === "paused" || status === "review_required",
     cancel: !terminalStates.has(status),
     terminate: ["training_running", "waiting_callback"].includes(status) && Boolean(loop.last_run_id),
@@ -504,12 +761,12 @@ async function loadDashboard() {
   }
 }
 
-function runnerQuery() {
+function runnerQuery(loop = null) {
   const params = new URLSearchParams();
-  state.runner = els.goalRunner?.value || state.runner || "local";
-  state.model = els.goalModel?.value.trim() || "";
-  if (state.runner) params.set("runner", state.runner);
-  if (state.model) params.set("model", state.model);
+  const runner = loop?.runner_kind || state.runner || els.goalRunner?.value || "";
+  const model = loop?.runner_model || state.model || "";
+  if (runner) params.set("runner", runner);
+  if (model) params.set("model", model);
   const query = params.toString();
   return query ? `?${query}` : "";
 }
@@ -518,8 +775,8 @@ async function postAction(loop, action) {
   const loopId = encodeURIComponent(loop.loop_id);
   const path =
     action === "terminate-run"
-      ? `/api/v1/loops/${loopId}/runs/${encodeURIComponent(loop.last_run_id)}/terminate${runnerQuery()}`
-      : `/api/v1/loops/${loopId}/${action}${runnerQuery()}`;
+      ? `/api/v1/loops/${loopId}/runs/${encodeURIComponent(loop.last_run_id)}/terminate${runnerQuery(loop)}`
+      : `/api/v1/loops/${loopId}/${action}${runnerQuery(loop)}`;
   const response = await fetch(path, { method: "POST" });
   if (!response.ok) {
     const text = await response.text();
@@ -546,6 +803,7 @@ async function loadContext() {
       els.goalRepo.value = state.defaultRepoPath;
     }
     if (els.goalRunner) els.goalRunner.value = state.runner;
+    syncRunnerDefaults();
   } catch (_error) {
     // The dashboard can still operate without context defaults.
   }
@@ -562,6 +820,92 @@ function renderRepoOptions() {
     .join("");
 }
 
+function selectRepoPath(path, label = "Selected folder") {
+  if (!els.goalRepo || !path) return;
+  const exists = Array.from(els.goalRepo.options).some((option) => option.value === path);
+  if (!exists) {
+    const option = document.createElement("option");
+    option.value = path;
+    option.textContent = `${label} - ${path}`;
+    els.goalRepo.appendChild(option);
+  }
+  els.goalRepo.value = path;
+}
+
+function setRepoBrowserMessage(message, kind = "") {
+  if (!els.repoBrowserMessage) return;
+  els.repoBrowserMessage.textContent = message;
+  els.repoBrowserMessage.className = `form-message ${kind}`.trim();
+}
+
+async function loadRepoDirectory(path) {
+  if (!els.repoBrowser || !els.repoBrowserList || !els.repoBrowserPath) return;
+  const params = new URLSearchParams();
+  if (path) params.set("path", path);
+  els.repoBrowserList.innerHTML = '<div class="empty-timeline">Loading directories...</div>';
+  setRepoBrowserMessage("");
+  try {
+    const response = await fetch(`/api/v1/filesystem?${params.toString()}`, { cache: "no-store" });
+    if (!response.ok) {
+      const text = await response.text();
+      throw new Error(text || `HTTP ${response.status}`);
+    }
+    const directory = await response.json();
+    state.repoBrowserPath = directory.path;
+    els.repoBrowserPath.textContent = directory.path;
+    els.repoParent.disabled = !directory.parent;
+    els.repoParent.dataset.path = directory.parent || "";
+    els.repoBrowserList.innerHTML = directory.entries.length
+      ? directory.entries
+          .map(
+            (entry) => `
+              <button class="repo-dir" type="button" data-path="${escapeHtml(entry.path)}" role="listitem">
+                <span aria-hidden="true">/</span>
+                <span>${escapeHtml(entry.name)}</span>
+              </button>
+            `
+          )
+          .join("")
+      : '<div class="empty-timeline">No readable child directories.</div>';
+    els.repoBrowserList.querySelectorAll(".repo-dir").forEach((button) => {
+      button.addEventListener("click", () => loadRepoDirectory(button.dataset.path));
+    });
+  } catch (error) {
+    els.repoBrowserList.innerHTML = '<div class="empty-timeline">Directory could not be opened.</div>';
+    setRepoBrowserMessage(error.message, "error");
+  }
+}
+
+function initRepoBrowser() {
+  if (
+    !els.repoBrowseToggle ||
+    !els.repoBrowser ||
+    !els.repoParent ||
+    !els.repoRoot ||
+    !els.repoUse ||
+    !els.goalRepo
+  ) {
+    return;
+  }
+  els.repoBrowseToggle.addEventListener("click", () => {
+    const opening = els.repoBrowser.hidden;
+    els.repoBrowser.hidden = !opening;
+    els.repoBrowseToggle.textContent = opening ? "Hide" : "Browse";
+    if (opening) loadRepoDirectory(els.goalRepo.value || state.defaultRepoPath);
+  });
+  els.repoParent.addEventListener("click", () => {
+    if (els.repoParent.dataset.path) loadRepoDirectory(els.repoParent.dataset.path);
+  });
+  els.repoRoot.addEventListener("click", () => loadRepoDirectory("/"));
+  els.repoUse.addEventListener("click", () => {
+    selectRepoPath(state.repoBrowserPath, "Browsed folder");
+    setRepoBrowserMessage("Repository folder selected.", "success");
+  });
+  els.goalRepo.addEventListener("change", () => {
+    if (!els.repoBrowser.hidden) loadRepoDirectory(els.goalRepo.value);
+  });
+}
+
 async function submitGoal(event) {
   event.preventDefault();
   const formData = new FormData(els.goalForm);
@@ -576,11 +920,16 @@ async function submitGoal(event) {
   const minDelta = Number(formData.get("min_delta"));
   const validationCommand = `${formData.get("validation_command") || ""}`.trim();
   const taskCommand = `${formData.get("task_command") || ""}`.trim();
+  const taskAdapterMode = `${formData.get("task_adapter_mode") || "none"}`;
   state.runner = `${formData.get("runner") || "local"}`;
   state.model = `${formData.get("model") || ""}`.trim();
 
   if (!objective || !repoPath) {
     setGoalMessage("Goal brief and repository selection are required.", "error");
+    return;
+  }
+  if (taskAdapterMode === "command" && !taskCommand) {
+    setGoalMessage("Command adapter needs a long-work adapter command.", "error");
     return;
   }
 
@@ -593,11 +942,14 @@ async function submitGoal(event) {
     max_turns: Number.isFinite(maxTurns) ? maxTurns : 3,
     patience: Number.isFinite(patience) ? patience : null,
     min_delta: Number.isFinite(minDelta) ? minDelta : 0.001,
-    validation_command: validationCommand || "python -m py_compile target_app.py",
-    task_command: taskCommand || "python fake_train.py --callback-file {callback_file} --run-id {run_id} --turn-id {turn_id}",
+    validation_command: validationCommand || null,
+    task_adapter_mode: taskAdapterMode,
+    task_command: taskCommand || null,
     execution_mode: formData.get("async") ? "async" : "sync",
     require_diff_review: Boolean(formData.get("require_diff_review")),
     auto_commit: Boolean(formData.get("auto_commit")),
+    runner_kind: state.runner,
+    runner_model: state.model || null,
   };
 
   els.goalSubmit.disabled = true;
@@ -618,8 +970,12 @@ async function submitGoal(event) {
     renderRepoOptions();
     if (state.defaultRepoPath) els.goalRepo.value = state.defaultRepoPath;
     if (els.goalRunner) els.goalRunner.value = state.runner;
+    if (els.goalTaskAdapter) els.goalTaskAdapter.value = taskAdapterMode;
     if (els.goalModel) els.goalModel.value = state.model;
-    setGoalMessage(`Created ${created.loop_id}.`, "success");
+    syncTaskAdapterFields();
+    state.actionMessage = `Created with ${runnerText(state.runner, state.model)} and ${taskAdapterText(taskAdapterMode)}. Select Start or Step to run the first turn.`;
+    state.actionMessageKind = "success";
+    setGoalMessage(`Created ${created.loop_id} with ${runnerText(state.runner, state.model)} and ${taskAdapterText(taskAdapterMode)}.`, "success");
     await loadDashboard();
   } catch (error) {
     setGoalMessage(`Create failed: ${error.message}`, "error");
@@ -645,7 +1001,7 @@ async function submitGuidance(loop) {
     applies_to: appliesInput.value || "next_turn",
     revised_objective: revisedObjective || null,
   };
-  const response = await fetch(`/api/v1/loops/${encodeURIComponent(loop.loop_id)}/guidance${runnerQuery()}`, {
+  const response = await fetch(`/api/v1/loops/${encodeURIComponent(loop.loop_id)}/guidance${runnerQuery(loop)}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
@@ -671,7 +1027,7 @@ function render() {
     row.querySelector(".turns").textContent = `Turn ${loop.turn}/${loop.max_turns}`;
     row.querySelector(".metric").textContent = `${loop.target_metric}: ${formatValue(loop.best_metric)} / ${formatValue(loop.target_value)}`;
     row.querySelector(".decision").textContent = loop.last_decision ? labelize(loop.last_decision) : "no decision yet";
-    row.querySelector(".cost").textContent = `${formatDuration(loop.elapsed_seconds)} · ${formatTokenEstimate(loop)} tokens est.`;
+    row.querySelector(".cost").textContent = `${runnerText(loop)} · ${formatDuration(loop.elapsed_seconds)} · ${formatTokenEstimate(loop)} tokens est.`;
     row.querySelector(".bar span").style.width = `${loop.progress_percent}%`;
     row.addEventListener("click", () => {
       if (state.selectedLoopId !== loop.loop_id) {
@@ -705,11 +1061,56 @@ function renderDetail(loop) {
       ? loop.callback_ready
         ? "Callback ready"
         : "Callback not ready"
-      : loop.callback_processed
-        ? "Callback processed"
-        : formatValue(loop.callback_ready);
+        : loop.callback_processed
+          ? "Callback processed"
+          : formatValue(loop.callback_ready);
+  const runnerBanner = loop.runner_is_simulated
+    ? `
+      <section class="runner-banner warning" aria-label="Execution backend">
+        <strong>Demo simulation backend</strong>
+        <span>This loop uses the deterministic local runner. It does not open real Codex Planner, Worker, or Judge sessions.</span>
+      </section>
+    `
+    : `
+      <section class="runner-banner ok" aria-label="Execution backend">
+        <strong>${escapeHtml(runnerText(loop))}</strong>
+        <span>Start, Step, and callback judging use the runner stored on this loop.</span>
+      </section>
+    `;
+  const adapterBanner =
+    loop.task_adapter_mode === "none"
+      ? `
+      <section class="runner-banner warning" aria-label="TaskRun adapter">
+        <strong>No long-work adapter configured</strong>
+        <span>CALO can run short Codex turns, but it will stop before auto-commit or external TaskRun launch. No hidden fake training is running.</span>
+      </section>
+    `
+      : loop.task_adapter_mode === "demo"
+        ? `
+      <section class="runner-banner warning" aria-label="TaskRun adapter">
+        <strong>Demo TaskRun adapter</strong>
+        <span>This loop uses the fake score fixture for lifecycle testing. It is not executing your real workload.</span>
+      </section>
+    `
+        : `
+      <section class="runner-banner ok" aria-label="TaskRun adapter">
+        <strong>Command TaskRun adapter</strong>
+        <span>Accepted changes can launch the configured external command with a callback file and run manifest.</span>
+      </section>
+    `;
+  const artifactWarning = loop.artifact_root_exists === false
+    ? `
+      <section class="runner-banner warning" aria-label="Artifact warning">
+        <strong>Artifact directory missing</strong>
+        <span>The database still has loop state, but the evidence directory is not present: ${escapeHtml(loop.artifact_root)}</span>
+      </section>
+    `
+    : "";
   els.detail.innerHTML = `
     <div class="detail-body">
+      ${runnerBanner}
+      ${adapterBanner}
+      ${artifactWarning}
       <section class="phase-panel" aria-label="Current phase">
         <div>
           <div class="phase-kicker">Current phase</div>
@@ -734,10 +1135,13 @@ function renderDetail(loop) {
       <div class="section-title">State</div>
       <div class="key-grid">
         <div><span>Mode</span><strong>${escapeHtml(loop.execution_mode)}</strong></div>
+        <div><span>Execution backend</span><strong>${escapeHtml(runnerText(loop))}</strong></div>
+        <div><span>TaskRun adapter</span><strong>${escapeHtml(taskAdapterText(loop.task_adapter_mode))}</strong></div>
         <div><span>Last run</span><strong>${escapeHtml(formatValue(loop.last_run_id))}</strong></div>
         <div><span>Last decision</span><strong>${escapeHtml(loop.last_decision ? labelize(loop.last_decision) : "n/a")}</strong></div>
         <div><span>Updated</span><strong>${escapeHtml(formatDate(loop.updated_at))}</strong></div>
         <div><span>Repository</span><strong>${escapeHtml(formatValue(loop.repo_path))}</strong></div>
+        <div><span>Artifact root</span><strong>${escapeHtml(formatValue(loop.artifact_root))}</strong></div>
         <div><span>Run owner</span><strong>${escapeHtml(formatValue(loop.run_owner))}</strong></div>
         <div><span>Run status</span><strong>${escapeHtml(formatValue(loop.run_status))}</strong></div>
         <div><span>Callback</span><strong>${escapeHtml(callbackState)}</strong></div>
@@ -757,6 +1161,8 @@ function renderDetail(loop) {
         <button class="button danger" data-action="terminate-run" ${actions.terminate ? "" : "disabled"}>Terminate TaskRun</button>
       </div>
       <div id="action-message" class="action-message ${escapeHtml(state.actionMessageKind)}" role="status" aria-live="polite">${escapeHtml(state.actionMessage)}</div>
+      <div class="section-title">Codex sessions</div>
+      ${renderCodexSessions(loop.recent_events || [])}
       <div class="section-title">Guide next Codex turn</div>
       <form id="guidance-form" class="guidance-form">
         <div class="field-block">
@@ -795,7 +1201,7 @@ function renderDetail(loop) {
     button.addEventListener("click", async () => {
       button.disabled = true;
       const actionMessage = els.detail.querySelector("#action-message");
-      actionMessage.textContent = `${button.textContent}...`;
+      actionMessage.textContent = `${button.textContent} with ${runnerText(loop)}...`;
       actionMessage.className = "action-message";
       try {
         const result = await postAction(loop, button.dataset.action);
@@ -840,5 +1246,10 @@ function renderDetail(loop) {
 
 els.refresh.addEventListener("click", loadDashboard);
 els.goalForm.addEventListener("submit", submitGoal);
+if (els.goalRunner) els.goalRunner.addEventListener("change", syncRunnerDefaults);
+if (els.goalTaskAdapter) els.goalTaskAdapter.addEventListener("change", syncTaskAdapterFields);
+initRepoBrowser();
+initLayoutResize();
+syncTaskAdapterFields();
 loadContext().then(loadDashboard);
 setInterval(loadDashboard, 5000);

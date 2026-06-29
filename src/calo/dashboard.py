@@ -50,6 +50,7 @@ def build_loop_summary(store: StateStore, state: LoopState, contract: LoopContra
         elapsed_seconds = max(0, round((updated_at - created_at).total_seconds()))
     event_count = len(store.list_events(state.loop_id))
     token_estimate = max(0, (state.turn * 2400) + (event_count * 90) + (len(store.list_operator_guidance(state.loop_id)) * 180))
+    runner_label = "Codex CLI" if contract.runner_kind == "codex-cli" else "Local deterministic demo"
     return LoopSummary(
         loop_id=state.loop_id,
         objective=contract.objective,
@@ -66,6 +67,13 @@ def build_loop_summary(store: StateStore, state: LoopState, contract: LoopContra
         updated_at=state.updated_at,
         repo_path=str(contract.repo_path),
         execution_mode=contract.execution_mode,
+        runner_kind=contract.runner_kind,
+        runner_model=contract.runner_model,
+        runner_label=runner_label,
+        runner_is_simulated=contract.runner_kind == "local",
+        task_adapter_mode=contract.task_adapter_mode,
+        artifact_root=str(contract.artifact_root),
+        artifact_root_exists=contract.artifact_root.exists(),
         created_at=contract.created_at,
         elapsed_seconds=elapsed_seconds,
         estimated_codex_tokens=token_estimate,

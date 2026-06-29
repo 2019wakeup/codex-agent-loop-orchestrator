@@ -20,6 +20,7 @@ def test_api_create_start_and_get_events(tmp_path: Path) -> None:
         target_value=0.6,
         iteration_limits=IterationLimits(max_turns=2, patience=2),
         commands=Commands(train="python fake_train.py --callback-file {callback_file} --run-id {run_id} --turn-id {turn_id}"),
+        task_adapter_mode="demo",
     )
 
     create_response = client.post("/api/v1/loops", json=contract.model_dump(mode="json"))
@@ -61,6 +62,31 @@ def test_api_create_start_and_get_events(tmp_path: Path) -> None:
     assert dashboard_response.json()[0]["loop_id"] == "api_loop"
 
 
+def test_api_filesystem_browses_machine_directories(tmp_path: Path) -> None:
+    app = create_app(tmp_path / "api.sqlite3")
+    client = TestClient(app)
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    not_directory = tmp_path / "target.py"
+    not_directory.write_text("print('ok')\n", encoding="utf-8")
+
+    response = client.get("/api/v1/filesystem", params={"path": str(tmp_path)})
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["path"] == str(tmp_path.resolve())
+    assert body["parent"] == str(tmp_path.parent.resolve())
+    assert {"name": "repo", "path": str(repo.resolve())} in body["entries"]
+
+    root_response = client.get("/api/v1/filesystem", params={"path": "/"})
+    assert root_response.status_code == 200
+    assert root_response.json()["path"] == "/"
+
+    file_response = client.get("/api/v1/filesystem", params={"path": str(not_directory)})
+    assert file_response.status_code == 400
+    assert "not a directory" in file_response.text
+
+
 def test_dashboard_summary_exposes_async_owner_and_wake_path(tmp_path: Path) -> None:
     app = create_app(tmp_path / "api.sqlite3")
     client = TestClient(app)
@@ -72,6 +98,7 @@ def test_dashboard_summary_exposes_async_owner_and_wake_path(tmp_path: Path) -> 
         execution_mode="async",
         iteration_limits=IterationLimits(max_turns=2, patience=2),
         commands=Commands(train="python fake_train.py --callback-file {callback_file} --run-id {run_id} --turn-id {turn_id}"),
+        task_adapter_mode="demo",
     )
     assert client.post("/api/v1/loops", json=contract.model_dump(mode="json")).status_code == 200
 
@@ -102,6 +129,7 @@ def test_api_goal_brief_creates_runnable_loop_without_contract_json(tmp_path: Pa
         "repo_path": str(tmp_path / "goal_repo"),
         "target_value": 0.6,
         "max_turns": 2,
+        "task_adapter_mode": "demo",
     }
 
     create_response = client.post("/api/v1/goals", json=goal)
@@ -129,6 +157,7 @@ def test_api_operator_guidance_updates_objective_and_next_evidence(tmp_path: Pat
         "repo_path": str(tmp_path / "guided_repo"),
         "target_value": 0.6,
         "max_turns": 2,
+        "task_adapter_mode": "demo",
     }
     assert client.post("/api/v1/goals", json=goal).status_code == 200
 
@@ -159,6 +188,80 @@ def test_api_operator_guidance_updates_objective_and_next_evidence(tmp_path: Pat
     assert any(entry["path"].startswith("guidance/") for entry in artifacts)
 
 
+def test_goal_persists_runner_backend_and_summary_trust_signals(tmp_path: Path) -> None:
+    app = create_app(tmp_path / "api.sqlite3")
+    client = TestClient(app)
+    goal = {
+        "loop_id": "real_backend_loop",
+        "objective": "Use a real backend instead of silently simulating",
+        "repo_path": str(tmp_path / "real_backend_repo"),
+        "target_value": 0.6,
+        "runner_kind": "codex-cli",
+        "runner_model": "test-model",
+    }
+
+    create_response = client.post("/api/v1/goals", json=goal)
+
+    assert create_response.status_code == 200
+    contract = client.get("/api/v1/loops/real_backend_loop/summary").json()
+    assert contract["runner_kind"] == "codex-cli"
+    assert contract["runner_model"] == "test-model"
+    assert contract["runner_is_simulated"] is False
+    assert contract["runner_label"] == "Codex CLI"
+    assert contract["task_adapter_mode"] == "none"
+    assert contract["artifact_root"].endswith(".codex/agent-loop/real_backend_loop")
+    assert contract["artifact_root_exists"] is True
+
+
+def test_real_goal_without_task_adapter_stops_before_fake_training(tmp_path: Path) -> None:
+    app = create_app(tmp_path / "api.sqlite3")
+    client = TestClient(app)
+    repo = tmp_path / "real_goal_repo"
+    goal = {
+        "loop_id": "needs_adapter_loop",
+        "objective": "Use real Codex turns without pretending a training job exists",
+        "repo_path": str(repo),
+        "target_value": 0.6,
+        "runner_kind": "codex-cli",
+        "task_adapter_mode": "none",
+    }
+    assert client.post("/api/v1/goals", json=goal).status_code == 200
+    assert not (repo / "fake_train.py").exists()
+    assert not (repo / "target_app.py").exists()
+
+    response = client.post("/api/v1/loops/needs_adapter_loop/step", params={"runner": "local"})
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "needs_setup"
+    assert response.json()["last_decision"] == "blocked_needs_user"
+    assert not (repo / "fake_train.py").exists()
+    events = client.get("/api/v1/loops/needs_adapter_loop/events").json()
+    event_types = [event["event_type"] for event in events]
+    assert "task.adapter.required" in event_types
+    assert "git.commit.created" not in event_types
+    summary = client.get("/api/v1/loops/needs_adapter_loop/summary").json()
+    assert summary["task_adapter_mode"] == "none"
+    assert summary["status"] == "needs_setup"
+
+
+def test_goal_command_adapter_requires_task_command(tmp_path: Path) -> None:
+    app = create_app(tmp_path / "api.sqlite3")
+    client = TestClient(app)
+    response = client.post(
+        "/api/v1/goals",
+        json={
+            "loop_id": "missing_command_loop",
+            "objective": "Connect a real external task",
+            "repo_path": str(tmp_path / "repo"),
+            "runner_kind": "codex-cli",
+            "task_adapter_mode": "command",
+        },
+    )
+
+    assert response.status_code == 400
+    assert "task_command is required" in response.text
+
+
 def test_api_step_and_collect_callback_support_web_async_flow(tmp_path: Path) -> None:
     app = create_app(tmp_path / "api.sqlite3")
     client = TestClient(app)
@@ -169,6 +272,7 @@ def test_api_step_and_collect_callback_support_web_async_flow(tmp_path: Path) ->
         "target_value": 0.6,
         "max_turns": 2,
         "execution_mode": "async",
+        "task_adapter_mode": "demo",
     }
     assert client.post("/api/v1/goals", json=goal).status_code == 200
 
@@ -220,6 +324,7 @@ def test_api_rejects_double_step_while_waiting_callback(tmp_path: Path) -> None:
         "repo_path": str(tmp_path / "double_step_repo"),
         "target_value": 0.6,
         "execution_mode": "async",
+        "task_adapter_mode": "demo",
     }
     assert client.post("/api/v1/goals", json=goal).status_code == 200
     first = client.post("/api/v1/loops/double_step_loop/step")
@@ -248,6 +353,7 @@ def test_api_can_terminate_owned_local_task_run(tmp_path: Path) -> None:
         "repo_path": str(tmp_path / "terminate_repo"),
         "target_value": 0.6,
         "execution_mode": "async",
+        "task_adapter_mode": "demo",
         "task_command": "python -c \"import time; time.sleep(30)\" --callback-file {callback_file} --run-id {run_id} --turn-id {turn_id}",
     }
     assert client.post("/api/v1/goals", json=goal).status_code == 200
@@ -270,6 +376,7 @@ def test_api_collect_callback_reports_not_ready(tmp_path: Path) -> None:
         "repo_path": str(tmp_path / "missing_callback_repo"),
         "target_value": 0.6,
         "execution_mode": "async",
+        "task_adapter_mode": "demo",
     }
     assert client.post("/api/v1/goals", json=goal).status_code == 200
     assert client.post("/api/v1/loops/missing_callback_loop/step").status_code == 200
@@ -297,6 +404,7 @@ def test_api_rejects_mismatched_callback_payload(tmp_path: Path) -> None:
         "repo_path": str(tmp_path / "victim_repo"),
         "target_value": 0.6,
         "execution_mode": "async",
+        "task_adapter_mode": "demo",
     }
     assert client.post("/api/v1/goals", json=goal).status_code == 200
     assert client.post("/api/v1/loops/victim_loop/step").status_code == 200
@@ -360,9 +468,20 @@ def test_web_ui_static_routes(tmp_path: Path) -> None:
     assert "Codex Agent Loop Orchestrator" in html.text
     assert "Local control plane for short Codex turns" in html.text
     assert 'id="goal-form"' in html.text
+    assert 'id="layout-splitter"' in html.text
+    assert 'role="separator"' in html.text
     assert "Goal brief" in html.text
     assert "<select id=\"goal-repo\"" in html.text
+    assert "Browse" in html.text
+    assert "Use folder" in html.text
     assert "Create loop" in html.text
+    assert "Execution backend" in html.text
+    assert "Real Codex CLI" in html.text
+    assert "Demo simulation" in html.text
+    assert "TaskRun adapter" in html.text
+    assert "No long-work adapter yet" in html.text
+    assert "Command adapter" in html.text
+    assert "Demo score adapter" in html.text
     assert "Advanced settings" in html.text
     assert "Adapter commands" in html.text
     assert "Quick check command" in html.text
@@ -374,6 +493,7 @@ def test_web_ui_static_routes(tmp_path: Path) -> None:
     assert "/api/v1/dashboard" in app_js
     assert "/api/v1/goals" in app_js
     assert "/api/v1/context" in app_js
+    assert "/api/v1/filesystem" in app_js
     assert "collect-callback" in app_js
     assert "Collect callback" in app_js
     assert "runnerQuery" in app_js
@@ -391,6 +511,15 @@ def test_web_ui_static_routes(tmp_path: Path) -> None:
     assert "describeEvent" in app_js
     assert "Loop timeline" in app_js
     assert "renderRepoOptions" in app_js
+    assert "runnerText" in app_js
+    assert "Demo simulation backend" in app_js
+    assert "No hidden fake training is running" in app_js
+    assert "Codex sessions" in app_js
+    assert "task.adapter.required" in app_js
+    assert "needs_setup" in app_js
+    assert "Artifact directory missing" in app_js
+    assert "initLayoutResize" in app_js
+    assert "calo.leftPaneWidth" in app_js
     assert "estimated_codex_tokens" in app_js
     assert "formatDuration" in app_js
     assert "JSON.stringify(loop" not in app_js
@@ -401,6 +530,9 @@ def test_web_ui_static_routes(tmp_path: Path) -> None:
     assert ".loop-row" in css.text
     assert ".phase-panel" in css.text
     assert ".goal-form" in css.text
+    assert ".layout-splitter" in css.text
+    assert ".runner-banner" in css.text
+    assert ".repo-browser" in css.text
     assert ".artifact-list" in css.text
     assert ".task-graph" in css.text
 
@@ -414,7 +546,10 @@ def test_web_ui_context_defaults_to_served_workspace(tmp_path: Path) -> None:
 
     assert response.status_code == 200
     assert response.json()["default_repo_path"] == str(tmp_path)
-    assert response.json()["runner"] == "local"
+    assert response.json()["runner"] in {"local", "codex-cli"}
+    assert isinstance(response.json()["codex_cli_available"], bool)
+    if response.json()["codex_cli_available"]:
+        assert response.json()["runner"] == "codex-cli"
     assert "codex-cli" in response.json()["runner_options"]
 
 
@@ -430,6 +565,7 @@ def test_api_callback_signature_validation(tmp_path: Path) -> None:
         iteration_limits=IterationLimits(max_turns=2, patience=2),
         webhook=WebhookSecurity(secret="top-secret"),
         commands=Commands(train="python fake_train.py --callback-file {callback_file} --run-id {run_id} --turn-id {turn_id}"),
+        task_adapter_mode="demo",
     )
     assert client.post("/api/v1/loops", json=contract.model_dump(mode="json")).status_code == 200
     payload = CallbackPayload(
@@ -474,6 +610,7 @@ def test_webhook_callback_requires_active_matching_turn(tmp_path: Path) -> None:
         iteration_limits=IterationLimits(max_turns=2, patience=2),
         webhook=WebhookSecurity(secret="top-secret"),
         commands=Commands(train="python fake_train.py --callback-file {callback_file} --run-id {run_id} --turn-id {turn_id}"),
+        task_adapter_mode="demo",
     )
     assert client.post("/api/v1/loops", json=contract.model_dump(mode="json")).status_code == 200
     payload = CallbackPayload(
@@ -512,6 +649,7 @@ def test_api_lifecycle_controls(tmp_path: Path) -> None:
         objective="Lifecycle control",
         repo_path=tmp_path / "repo",
         target_value=0.7,
+        task_adapter_mode="demo",
     )
     assert client.post("/api/v1/loops", json=contract.model_dump(mode="json")).status_code == 200
 

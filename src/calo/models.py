@@ -27,6 +27,7 @@ class LoopStatus(str, Enum):
     PAUSED = "paused"
     CANCELLED = "cancelled"
     REVIEW_REQUIRED = "review_required"
+    NEEDS_SETUP = "needs_setup"
 
 
 class Decision(str, Enum):
@@ -87,10 +88,13 @@ class GoalRequest(BaseModel):
     max_turns: int = 3
     patience: int | None = None
     min_delta: float = 0.001
-    validation_command: str = "python -m py_compile target_app.py"
-    task_command: str = "python fake_train.py --callback-file {callback_file} --run-id {run_id} --turn-id {turn_id}"
+    validation_command: str | None = None
+    task_adapter_mode: Literal["none", "command", "demo"] = "none"
+    task_command: str | None = None
     require_diff_review: bool = False
     auto_commit: bool = True
+    runner_kind: Literal["local", "codex-cli"] = "local"
+    runner_model: str | None = None
 
     @field_validator("objective")
     @classmethod
@@ -157,6 +161,9 @@ class LoopContract(BaseModel):
     commands: Commands = Field(default_factory=Commands)
     human_gate: HumanGate = Field(default_factory=HumanGate)
     webhook: WebhookSecurity = Field(default_factory=WebhookSecurity)
+    runner_kind: Literal["local", "codex-cli"] = "local"
+    runner_model: str | None = None
+    task_adapter_mode: Literal["none", "command", "demo"] = "none"
     created_at: str = Field(default_factory=utc_now)
 
     @property
@@ -322,6 +329,13 @@ class LoopSummary(BaseModel):
     updated_at: str
     repo_path: str
     execution_mode: Literal["sync", "async"]
+    runner_kind: Literal["local", "codex-cli"] = "local"
+    runner_model: str | None = None
+    runner_label: str = "Local deterministic demo"
+    runner_is_simulated: bool = True
+    task_adapter_mode: Literal["none", "command", "demo"] = "none"
+    artifact_root: str | None = None
+    artifact_root_exists: bool = True
     created_at: str | None = None
     elapsed_seconds: int = 0
     estimated_codex_tokens: int = 0

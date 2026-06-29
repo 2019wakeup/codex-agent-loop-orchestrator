@@ -35,6 +35,9 @@ def _wait_for_server(base_url: str) -> None:
 
 def test_web_buttons_and_action_messages_in_real_browser(tmp_path: Path) -> None:
     workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    browsed_repo = tmp_path / "browsed_repo"
+    browsed_repo.mkdir()
     port = _free_port()
     base_url = f"http://127.0.0.1:{port}"
     server = subprocess.Popen(
@@ -61,14 +64,64 @@ def test_web_buttons_and_action_messages_in_real_browser(tmp_path: Path) -> None
             browser = pw.chromium.launch(headless=True)
             page = browser.new_page(viewport={"width": 1280, "height": 900})
             page.goto(f"{base_url}/ui/")
+            splitter = page.locator("#layout-splitter")
+            expect(splitter).to_be_visible()
+            repo_box = page.locator(".repo-picker-row").bounding_box()
+            loop_id_box = page.locator("#goal-loop-id").bounding_box()
+            assert repo_box is not None
+            assert loop_id_box is not None
+            assert repo_box["width"] > loop_id_box["width"] * 1.6
+
+            splitter_box = splitter.bounding_box()
+            left_box = page.locator(".loops-panel").bounding_box()
+            assert splitter_box is not None
+            assert left_box is not None
+            start_x = splitter_box["x"] + splitter_box["width"] / 2
+            start_y = splitter_box["y"] + splitter_box["height"] / 2
+            page.mouse.move(start_x, start_y)
+            page.mouse.down()
+            page.mouse.move(2000, start_y)
+            page.mouse.up()
+            expanded_width = page.locator(".loops-panel").bounding_box()["width"]
+            right_width = page.locator(".detail-panel").bounding_box()["width"]
+            assert expanded_width <= 722
+            assert right_width >= 478
+
+            splitter_box = splitter.bounding_box()
+            assert splitter_box is not None
+            page.mouse.move(splitter_box["x"] + splitter_box["width"] / 2, start_y)
+            page.mouse.down()
+            page.mouse.move(-200, start_y)
+            page.mouse.up()
+            collapsed_width = page.locator(".loops-panel").bounding_box()["width"]
+            assert 338 <= collapsed_width < expanded_width
+
+            splitter.focus()
+            page.keyboard.press("End")
+            keyboard_width = page.locator(".loops-panel").bounding_box()["width"]
+            assert keyboard_width >= expanded_width - 2
+
+            page.get_by_role("button", name="Browse").click()
+            expect(page.locator("#repo-browser-path")).to_contain_text(str(workspace))
+            page.get_by_role("button", name="Up").click()
+            expect(page.locator("#repo-browser-path")).to_contain_text(str(tmp_path))
+            page.locator(".repo-dir", has_text=browsed_repo.name).click()
+            expect(page.locator("#repo-browser-path")).to_contain_text(str(browsed_repo))
+            page.get_by_role("button", name="Use folder").click()
+            expect(page.get_by_text("Repository folder selected.")).to_be_visible()
+            assert page.locator("#goal-repo").input_value() == str(browsed_repo)
+
             page.get_by_label("Goal brief").fill("Browser acceptance async loop")
-            page.get_by_label("Repository").select_option(str(workspace))
+            page.get_by_label("Execution backend").select_option("local")
+            expect(page.get_by_label("TaskRun adapter")).to_have_value("demo")
             page.get_by_label("Loop ID").fill("browser_loop")
             page.get_by_label("Target score").fill("0.6")
             page.get_by_label("Max turns").fill("2")
             page.get_by_label("Async mode").check()
             page.get_by_role("button", name="Create loop").click()
-            expect(page.get_by_text("Created browser_loop.")).to_be_visible()
+            expect(page.get_by_text("Created browser_loop with Demo simulation and Demo score adapter.")).to_be_visible()
+            expect(page.get_by_text("Demo simulation backend")).to_be_visible()
+            expect(page.get_by_text("Demo TaskRun adapter")).to_be_visible()
 
             page.get_by_label("Instruction").fill("Make the next turn focus on evidence clarity and operator intent.")
             page.get_by_label("Revise goal brief").fill("Browser acceptance async loop with operator guidance")
@@ -97,6 +150,7 @@ def test_web_buttons_and_action_messages_in_real_browser(tmp_path: Path) -> None
             expect(page.get_by_role("button", name="Terminate TaskRun")).to_be_enabled()
             expect(page.get_by_text("Task graph", exact=True)).to_be_visible()
             expect(page.get_by_text("TaskRuns", exact=True)).to_be_visible()
+            expect(page.get_by_text("Codex sessions", exact=True)).to_be_visible()
             expect(page.get_by_text("Artifacts", exact=True)).to_be_visible()
 
             expect(page.get_by_role("button", name="Collect callback")).to_be_enabled(timeout=7000)

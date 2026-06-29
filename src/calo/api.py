@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -31,6 +32,11 @@ def create_app(db_path: Path | None = None) -> FastAPI:
         if kind == "codex-cli":
             return CodexCliRunner(model=model)
         raise HTTPException(status_code=400, detail="runner must be one of: local, codex-cli")
+
+    def runner_defaults(contract: LoopContract | None = None, runner: str | None = None, model: str | None = None) -> tuple[str, str | None]:
+        kind = runner or (contract.runner_kind if contract else "local")
+        selected_model = model if model is not None else (contract.runner_model if contract else None)
+        return kind, selected_model
 
     def controller_for(runner: str = "local", model: str | None = None) -> LoopController:
         return LoopController(store, runner=make_runner(runner, model))
@@ -70,18 +76,53 @@ def create_app(db_path: Path | None = None) -> FastAPI:
             add(contract.repo_path, f"Loop repo: {state.loop_id}")
         return list(options.values())
 
+    def browse_directory(path: str | None = None) -> dict[str, object]:
+        requested = Path(path).expanduser() if path else default_workspace()
+        try:
+            current = requested.resolve()
+        except OSError as exc:
+            raise HTTPException(status_code=400, detail=f"cannot resolve directory: {exc}") from exc
+        if not current.exists():
+            raise HTTPException(status_code=404, detail=f"directory does not exist: {current}")
+        if not current.is_dir():
+            raise HTTPException(status_code=400, detail=f"path is not a directory: {current}")
+        entries: list[dict[str, str]] = []
+        try:
+            for child in current.iterdir():
+                try:
+                    if child.is_dir():
+                        entries.append({"name": child.name, "path": str(child.resolve())})
+                except OSError:
+                    continue
+        except PermissionError as exc:
+            raise HTTPException(status_code=403, detail=f"permission denied: {current}") from exc
+        entries.sort(key=lambda item: item["name"].lower())
+        parent = current.parent if current.parent != current else None
+        return {
+            "path": str(current),
+            "parent": str(parent) if parent else None,
+            "entries": entries,
+        }
+
     @app.get("/", include_in_schema=False)
     def root():
         return RedirectResponse(url="/ui/")
 
     @app.get("/api/v1/context")
     def context():
+        codex_cli_available = shutil.which("codex") is not None
+        default_runner = "codex-cli" if codex_cli_available else "local"
         return {
             "default_repo_path": str(default_workspace()),
             "repo_options": repo_options(),
-            "runner": "local",
+            "runner": default_runner,
             "runner_options": ["local", "codex-cli"],
+            "codex_cli_available": codex_cli_available,
         }
+
+    @app.get("/api/v1/filesystem")
+    def filesystem(path: str | None = None):
+        return browse_directory(path)
 
     @app.post("/api/v1/loops")
     def create_loop(contract: LoopContract):
@@ -89,13 +130,17 @@ def create_app(db_path: Path | None = None) -> FastAPI:
 
     @app.post("/api/v1/goals")
     def create_goal(goal: GoalRequest):
-        contract = contract_from_goal(goal)
+        try:
+            contract = contract_from_goal(goal)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
         return controller_for().create_loop(contract)
 
     @app.post("/api/v1/loops/{loop_id}/start")
-    def start_loop(loop_id: str, runner: str = "local", model: str | None = None):
-        controller = controller_for(runner, model)
-        contract = controller.load_contract(loop_id)
+    def start_loop(loop_id: str, runner: str | None = None, model: str | None = None):
+        contract = store.load_contract(loop_id)
+        runner_kind, runner_model = runner_defaults(contract, runner, model)
+        controller = controller_for(runner_kind, runner_model)
         state = store.load_state(loop_id)
         if state.status != LoopStatus.READY:
             raise HTTPException(status_code=409, detail=f"cannot start while loop status is {state.status}")
@@ -105,18 +150,20 @@ def create_app(db_path: Path | None = None) -> FastAPI:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
 
     @app.post("/api/v1/loops/{loop_id}/step")
-    def step_loop(loop_id: str, runner: str = "local", model: str | None = None):
-        controller = controller_for(runner, model)
-        contract = controller.load_contract(loop_id)
+    def step_loop(loop_id: str, runner: str | None = None, model: str | None = None):
+        contract = store.load_contract(loop_id)
+        runner_kind, runner_model = runner_defaults(contract, runner, model)
+        controller = controller_for(runner_kind, runner_model)
         try:
             return controller.run_one_turn(contract)
         except ValueError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
 
     @app.post("/api/v1/loops/{loop_id}/collect-callback")
-    def collect_callback(loop_id: str, run_id: str | None = None, runner: str = "local", model: str | None = None):
-        controller = controller_for(runner, model)
-        contract = controller.load_contract(loop_id)
+    def collect_callback(loop_id: str, run_id: str | None = None, runner: str | None = None, model: str | None = None):
+        contract = store.load_contract(loop_id)
+        runner_kind, runner_model = runner_defaults(contract, runner, model)
+        controller = controller_for(runner_kind, runner_model)
         try:
             return controller.collect_callback_file(contract, run_id)
         except FileNotFoundError as exc:

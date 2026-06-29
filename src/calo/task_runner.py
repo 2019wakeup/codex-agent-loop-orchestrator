@@ -12,6 +12,8 @@ from .models import CallbackPayload, LoopContract, RunStatus
 
 class TaskRunner:
     def validate(self, contract: LoopContract) -> tuple[bool, str]:
+        if not contract.commands.validation.strip():
+            return True, "No quick check command configured; validation skipped before TaskRun setup.\n"
         result = subprocess.run(
             contract.commands.validation,
             cwd=contract.repo_path,

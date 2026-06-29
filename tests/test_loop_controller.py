@@ -35,6 +35,7 @@ def make_contract(tmp_path: Path, target: float = 0.7, max_turns: int = 3) -> Lo
         target_value=target,
         iteration_limits=IterationLimits(max_turns=max_turns, patience=max_turns),
         commands=Commands(train="python fake_train.py --callback-file {callback_file} --run-id {run_id} --turn-id {turn_id}"),
+        task_adapter_mode="demo",
     )
 
 
@@ -135,6 +136,7 @@ def test_goal_request_compiles_to_contract_with_safe_defaults(tmp_path: Path) ->
     assert contract.execution_mode == "async"
     assert contract.iteration_limits.max_turns == 1
     assert contract.iteration_limits.patience == 1
+    assert contract.task_adapter_mode == "demo"
     assert "{callback_file}" in contract.commands.train
 
 
