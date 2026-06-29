@@ -130,7 +130,11 @@ def test_web_buttons_and_action_messages_in_real_browser(tmp_path: Path) -> None
             expect(page.get_by_text("Repository folder selected.")).to_be_visible()
             assert page.locator("#goal-repo").input_value() == str(browsed_repo)
 
-            page.get_by_label("Goal brief").fill("Browser acceptance async loop")
+            markdown_goal = "**Browser acceptance async loop**\n\n- Evidence clarity\n- Operator intent\n\n`callback_ready` must be visible"
+            page.get_by_label("Goal brief").fill(markdown_goal)
+            expect(page.locator("#goal-objective-preview strong")).to_contain_text("Browser acceptance async loop")
+            expect(page.locator("#goal-objective-preview li").first).to_contain_text("Evidence clarity")
+            expect(page.locator("#goal-objective-preview code").first).to_contain_text("callback_ready")
             page.get_by_label("Execution backend").select_option("local")
             expect(page.get_by_label("TaskRun adapter")).to_have_value("demo")
             page.get_by_label("Loop ID").fill("browser_loop")
@@ -141,13 +145,16 @@ def test_web_buttons_and_action_messages_in_real_browser(tmp_path: Path) -> None
             expect(page.get_by_text("Created browser_loop with Demo simulation and Demo score adapter.")).to_be_visible()
             expect(page.get_by_text("Demo simulation backend")).to_be_visible()
             expect(page.get_by_text("Demo TaskRun adapter")).to_be_visible()
+            expect(page.locator(".objective-full").first.locator("strong")).to_contain_text("Browser acceptance async loop")
+            expect(page.locator(".objective-full").first.locator("li").first).to_contain_text("Evidence clarity")
 
             page.get_by_role("tab", name="Work").click()
             page.get_by_label("Instruction").fill("Make the next turn focus on evidence clarity and operator intent.")
-            page.get_by_label("Revise goal brief").fill("Browser acceptance async loop with operator guidance")
+            page.get_by_label("Revise goal brief").fill("# Browser acceptance async loop with operator guidance\n\n- Keep evidence readable")
             page.get_by_role("button", name="Submit guidance").click()
             expect(page.get_by_text("Guidance saved and goal brief revised.")).to_be_visible()
             expect(page.locator(".objective-full")).to_contain_text("Browser acceptance async loop with operator guidance")
+            expect(page.locator(".objective-full").first.locator("h3")).to_contain_text("Browser acceptance async loop with operator guidance")
             expect(page.locator(".guidance-entry").first).to_contain_text(
                 "Make the next turn focus on evidence clarity and operator intent."
             )

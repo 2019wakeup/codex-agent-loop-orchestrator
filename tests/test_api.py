@@ -607,6 +607,9 @@ def test_web_ui_static_routes(tmp_path: Path) -> None:
     assert ">English</button>" in html.text
     assert 'data-i18n="Local control plane for short Codex turns and externally owned long work."' in html.text
     assert 'id="goal-form"' in html.text
+    assert 'id="goal-objective-preview"' in html.text
+    assert "Markdown preview" in html.text
+    assert "Markdown supported" in html.text
     assert 'id="layout-splitter"' in html.text
     assert 'role="separator"' in html.text
     assert "Goal brief" in html.text
@@ -643,6 +646,8 @@ def test_web_ui_static_routes(tmp_path: Path) -> None:
     assert "runnerQuery" in app_js
     assert "calo.language" in app_js
     assert "function applyI18n" in app_js
+    assert "function renderMarkdown" in app_js
+    assert "syncGoalMarkdownPreview" in app_js
     assert "zh-CN" in app_js
     assert 'status !== "waiting_callback"' in app_js
     assert "external TaskRun was not terminated" in app_js
@@ -688,6 +693,8 @@ def test_web_ui_static_routes(tmp_path: Path) -> None:
     assert ".loop-row" in css.text
     assert ".phase-panel" in css.text
     assert ".goal-form" in css.text
+    assert ".markdown-body" in css.text
+    assert ".markdown-preview-shell" in css.text
     assert ".layout-splitter" in css.text
     assert ".runner-banner" in css.text
     assert ".repo-browser" in css.text

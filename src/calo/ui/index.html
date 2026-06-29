@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Codex Agent Loop Orchestrator</title>
-    <link rel="stylesheet" href="/ui/styles.css?v=20260630-i18n" />
+    <link rel="stylesheet" href="/ui/styles.css?v=20260630-md-brief" />
   </head>
   <body>
     <header class="topbar">
@@ -34,7 +34,21 @@
         <form id="goal-form" class="goal-form">
           <div class="field-block">
             <label for="goal-objective" data-i18n="Goal brief">Goal brief</label>
-            <textarea id="goal-objective" name="objective" rows="3" required></textarea>
+            <textarea
+              id="goal-objective"
+              name="objective"
+              rows="5"
+              required
+              placeholder="Describe the goal, constraints, and acceptance criteria in Markdown."
+              data-i18n-placeholder="Describe the goal, constraints, and acceptance criteria in Markdown."
+            ></textarea>
+            <small class="field-help" data-i18n="Markdown supported: headings, lists, links, inline code, and fenced code blocks.">
+              支持 Markdown：标题、列表、链接、inline code 和 fenced code block。
+            </small>
+            <div class="markdown-preview-shell">
+              <div class="preview-title" data-i18n="Markdown preview">Markdown preview</div>
+              <div id="goal-objective-preview" class="markdown-preview markdown-body" aria-live="polite"></div>
+            </div>
           </div>
           <div class="field-grid">
             <div class="field-block wide-field">
@@ -183,6 +197,6 @@
       </button>
     </template>
 
-    <script src="/ui/app.js?v=20260630-i18n"></script>
+    <script src="/ui/app.js?v=20260630-md-brief"></script>
   </body>
 </html>

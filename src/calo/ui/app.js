@@ -29,6 +29,8 @@ const els = {
   goalForm: document.querySelector("#goal-form"),
   goalMessage: document.querySelector("#goal-message"),
   goalSubmit: document.querySelector("#goal-submit"),
+  goalObjective: document.querySelector("#goal-objective"),
+  goalObjectivePreview: document.querySelector("#goal-objective-preview"),
   goalRepo: document.querySelector("#goal-repo"),
   repoBrowseToggle: document.querySelector("#repo-browse-toggle"),
   repoBrowser: document.querySelector("#repo-browser"),
@@ -62,6 +64,10 @@ const zh = {
   "Loop Queue": "Loop 队列",
   "Create a goal, then hand off long work without keeping Codex awake.": "创建 goal，然后把长任务交给外部执行，Codex 不需要一直醒着。",
   "Goal brief": "Goal brief",
+  "Describe the goal, constraints, and acceptance criteria in Markdown.": "用 Markdown 描述 goal、约束和验收标准。",
+  "Markdown supported: headings, lists, links, inline code, and fenced code blocks.": "支持 Markdown：标题、列表、链接、inline code 和 fenced code block。",
+  "Markdown preview": "Markdown preview",
+  "Markdown preview appears here.": "Markdown preview 会显示在这里。",
   Repository: "Repository",
   Browse: "Browse",
   Hide: "收起",
@@ -442,6 +448,117 @@ function escapeHtml(value) {
   });
 }
 
+function escapeAttribute(value) {
+  return escapeHtml(value).replace(/`/g, "&#96;");
+}
+
+function renderInlineMarkdown(text) {
+  const tokens = [];
+  const token = (html) => {
+    const placeholder = `@@MDTOKEN${tokens.length}@@`;
+    tokens.push([placeholder, html]);
+    return placeholder;
+  };
+  let source = `${text ?? ""}`;
+  source = source.replace(/`([^`]+)`/g, (_match, code) => token(`<code>${escapeHtml(code)}</code>`));
+  source = source.replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g, (_match, label, href) => {
+    return token(`<a href="${escapeAttribute(href)}" target="_blank" rel="noopener noreferrer">${escapeHtml(label)}</a>`);
+  });
+  let html = escapeHtml(source);
+  html = html.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
+  html = html.replace(/(^|[^*])\*([^*\n]+)\*/g, "$1<em>$2</em>");
+  for (const [placeholder, value] of tokens) html = html.replaceAll(placeholder, value);
+  return html;
+}
+
+function renderMarkdown(markdown) {
+  const source = `${markdown || ""}`.trim();
+  if (!source) return `<p class="markdown-empty">${escapeHtml(t("Markdown preview appears here."))}</p>`;
+  const lines = source.replace(/\r\n/g, "\n").split("\n");
+  const blocks = [];
+  let paragraph = [];
+  let listItems = [];
+  let quoteLines = [];
+  let codeLines = [];
+  let inCodeBlock = false;
+
+  const flushParagraph = () => {
+    if (!paragraph.length) return;
+    blocks.push(`<p>${renderInlineMarkdown(paragraph.join(" "))}</p>`);
+    paragraph = [];
+  };
+  const flushList = () => {
+    if (!listItems.length) return;
+    blocks.push(`<ul>${listItems.map((item) => `<li>${renderInlineMarkdown(item)}</li>`).join("")}</ul>`);
+    listItems = [];
+  };
+  const flushQuote = () => {
+    if (!quoteLines.length) return;
+    blocks.push(`<blockquote>${quoteLines.map((line) => `<p>${renderInlineMarkdown(line)}</p>`).join("")}</blockquote>`);
+    quoteLines = [];
+  };
+  const flushTextBlocks = () => {
+    flushParagraph();
+    flushList();
+    flushQuote();
+  };
+
+  for (const rawLine of lines) {
+    const line = rawLine.replace(/\s+$/g, "");
+    if (line.trim().startsWith("```")) {
+      if (inCodeBlock) {
+        blocks.push(`<pre><code>${escapeHtml(codeLines.join("\n"))}</code></pre>`);
+        codeLines = [];
+        inCodeBlock = false;
+      } else {
+        flushTextBlocks();
+        inCodeBlock = true;
+      }
+      continue;
+    }
+    if (inCodeBlock) {
+      codeLines.push(line);
+      continue;
+    }
+    if (!line.trim()) {
+      flushTextBlocks();
+      continue;
+    }
+    const heading = /^(#{1,3})\s+(.+)$/.exec(line);
+    if (heading) {
+      flushTextBlocks();
+      const level = heading[1].length + 2;
+      blocks.push(`<h${level}>${renderInlineMarkdown(heading[2])}</h${level}>`);
+      continue;
+    }
+    const list = /^\s*[-*]\s+(.+)$/.exec(line);
+    if (list) {
+      flushParagraph();
+      flushQuote();
+      listItems.push(list[1]);
+      continue;
+    }
+    const quote = /^\s*>\s?(.+)$/.exec(line);
+    if (quote) {
+      flushParagraph();
+      flushList();
+      quoteLines.push(quote[1]);
+      continue;
+    }
+    flushList();
+    flushQuote();
+    paragraph.push(line);
+  }
+  if (inCodeBlock) blocks.push(`<pre><code>${escapeHtml(codeLines.join("\n"))}</code></pre>`);
+  flushTextBlocks();
+  return blocks.join("");
+}
+
+function syncGoalMarkdownPreview() {
+  if (!els.goalObjectivePreview || !els.goalObjective) return;
+  els.goalObjectivePreview.innerHTML = renderMarkdown(els.goalObjective.value);
+}
+
 function formatValue(value, fallback = "n/a") {
   if (value === null || value === undefined || value === "") return fallback;
   if (typeof value === "number") return Number.isInteger(value) ? `${value}` : value.toFixed(3);
@@ -729,7 +846,7 @@ function renderOperatorGuidance(guidanceItems) {
               <p>${escapeHtml(item.message)}</p>
               ${
                 item.revised_objective
-                  ? `<div class="guidance-revision"><span>${escapeHtml(t("Revised objective"))}</span><strong>${escapeHtml(item.revised_objective)}</strong></div>`
+                  ? `<div class="guidance-revision"><span>${escapeHtml(t("Revised objective"))}</span><div class="markdown-body">${renderMarkdown(item.revised_objective)}</div></div>`
                   : ""
               }
             </article>
@@ -750,7 +867,8 @@ function renderGuidanceForm(loop) {
       <div class="field-block">
         <label for="guidance-objective">${escapeHtml(t("Revise goal brief"))}</label>
         <textarea id="guidance-objective" rows="2" placeholder="${escapeHtml(t("Optional. Leave blank to keep the current objective."))}"></textarea>
-        <small class="field-help">${escapeHtml(t("Current"))}: ${escapeHtml(loop.objective)}</small>
+        <small class="field-help">${escapeHtml(t("Current"))} Markdown:</small>
+        <div class="markdown-body guidance-current">${renderMarkdown(loop.objective)}</div>
       </div>
       <div class="guidance-controls">
         <div class="field-block">
@@ -1623,7 +1741,7 @@ function renderDetail(loop) {
       <div class="detail-overview-grid">
         <section class="detail-card">
           <div class="section-title compact">${escapeHtml(t("Objective"))}</div>
-          <p class="objective-full">${escapeHtml(loop.objective)}</p>
+          <div class="objective-full markdown-body">${renderMarkdown(loop.objective)}</div>
           <div class="section-title compact">${escapeHtml(t("State"))}</div>
           ${stateGrid}
         </section>
@@ -1689,7 +1807,7 @@ function renderDetail(loop) {
       <section class="detail-command-center" aria-label="${escapeHtml(t("Loop controls"))}">
         <div class="command-primary">
           <div class="section-title compact">${escapeHtml(t("Objective"))}</div>
-          <p class="objective-full">${escapeHtml(loop.objective)}</p>
+          <div class="objective-full markdown-body">${renderMarkdown(loop.objective)}</div>
           ${renderTaskAdapterSetup(loop)}
         </div>
         <div class="command-actions">
@@ -1812,11 +1930,13 @@ els.refresh.addEventListener("click", loadDashboard);
 els.goalForm.addEventListener("submit", submitGoal);
 if (els.goalRunner) els.goalRunner.addEventListener("change", syncRunnerDefaults);
 if (els.goalTaskAdapter) els.goalTaskAdapter.addEventListener("change", syncTaskAdapterFields);
+if (els.goalObjective) els.goalObjective.addEventListener("input", syncGoalMarkdownPreview);
 if (els.languageToggle) {
   els.languageToggle.addEventListener("click", () => {
     state.language = state.language === "zh" ? "en" : "zh";
     window.localStorage.setItem("calo.language", state.language);
     applyI18n();
+    syncGoalMarkdownPreview();
     syncTaskAdapterFields();
     render();
   });
@@ -1824,6 +1944,7 @@ if (els.languageToggle) {
 initRepoBrowser();
 initLayoutResize();
 applyI18n();
+syncGoalMarkdownPreview();
 syncTaskAdapterFields();
 loadContext().then(loadDashboard);
 setInterval(loadDashboard, 5000);
