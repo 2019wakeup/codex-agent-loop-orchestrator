@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import time
 from pathlib import Path
 
@@ -670,125 +671,61 @@ def test_web_ui_static_routes(tmp_path: Path) -> None:
     assert html.status_code == 200
     assert "Codex Agent Loop Orchestrator" in html.text
     assert '<html lang="zh-CN">' in html.text
-    assert "短 Codex turn 与外部长任务的本地控制台。" in html.text
-    assert 'id="language-toggle"' in html.text
-    assert ">English</button>" in html.text
-    assert 'data-i18n="Local control plane for short Codex turns and externally owned long work."' in html.text
-    assert 'id="goal-form"' in html.text
-    assert 'id="goal-objective-preview"' in html.text
-    assert "Markdown preview" in html.text
-    assert "Markdown supported" in html.text
-    assert "tables" in html.text
-    assert 'id="layout-splitter"' in html.text
-    assert 'role="separator"' in html.text
-    assert "Goal brief" in html.text
-    assert "Loop 队列" in html.text
-    assert "<select id=\"goal-repo\"" in html.text
-    assert "Browse" in html.text
-    assert "使用此文件夹" in html.text
-    assert 'data-i18n="Use folder"' in html.text
-    assert "创建 Loop" in html.text
-    assert 'data-i18n="Create loop"' in html.text
-    assert "Execution backend" in html.text
-    assert "Real Codex CLI" in html.text
-    assert "Demo simulation" in html.text
-    assert "External work mode" in html.text
-    assert "Stop before TaskRun" in html.text
-    assert "Run my command" in html.text
-    assert "Demo fake TaskRun" in html.text
-    assert "高级设置" in html.text
-    assert 'data-i18n="Advanced settings"' in html.text
-    assert "Adapter commands" in html.text
-    assert "Quick check command" in html.text
-    assert "Long-work adapter command" in html.text
-    assert "External work command wizard" in html.text
-    assert "Generated command" in html.text
-    assert "data-command-wizard" in html.text
-    assert "Diff review" in html.text
-    assert "Auto commit" in html.text
+    assert '<div id="app"></div>' in html.text
+    assert "/ui/assets/" in html.text
 
-    app_js = client.get("/ui/app.js").text
-    assert "/api/v1/dashboard" in app_js
-    assert "/api/v1/goals" in app_js
-    assert "/api/v1/context" in app_js
-    assert "/api/v1/filesystem" in app_js
-    assert "collect-callback" in app_js
-    assert "Collect callback" in app_js
-    assert "runnerQuery" in app_js
-    assert "calo.language" in app_js
-    assert "function applyI18n" in app_js
-    assert "function renderMarkdown" in app_js
-    assert "function renderMarkdownTable" in app_js
-    assert "markdown-table-scroll" in app_js
-    assert "syncGoalMarkdownPreview" in app_js
-    assert "zh-CN" in app_js
-    assert 'status !== "waiting_callback"' in app_js
-    assert "external TaskRun was not terminated" in app_js
-    assert "renderTaskGraph" in app_js
-    assert "renderTaskRuns" in app_js
-    assert "renderArtifacts" in app_js
-    assert "artifact-source-filter" in app_js
-    assert "artifact-preview-panel" in app_js
-    assert "renderCodexSessions" in app_js
-    assert "codex-session-timeline" in app_js
-    assert "Demo simulated session" in app_js
-    assert "Real Codex CLI session" in app_js
-    assert "attachCommandWizard" in app_js
-    assert "validateCommandCallback" in app_js
-    assert "Terminate local TaskRun" in app_js
-    assert "command-groups" in app_js
-    assert "/terminate" in app_js
-    assert "Action failed" not in app_js
-    assert "failed:" in app_js
-    assert "succeeded:" in app_js
-    assert "state.actionMessage" in app_js
-    assert "describeEvent" in app_js
-    assert "Loop timeline" in app_js
-    assert "renderRepoOptions" in app_js
-    assert "runnerText" in app_js
-    assert 'start: status === "ready"' in app_js
-    assert "Demo simulation backend" in app_js
-    assert "No external work configured" in app_js
-    assert "Codex sessions" in app_js
-    assert "detailTab" in app_js
-    assert "data-detail-tab" in app_js
-    assert "detail-tab-panel" in app_js
-    assert "task.adapter.required" in app_js
-    assert "task-adapter-form" in app_js
-    assert "/task-adapter" in app_js
-    assert "Configure and continue" in app_js
-    assert "Adapter configured; current turn continued" in app_js
-    assert "task.adapter.configured" in app_js
-    assert "task.adapter.validation.completed" in app_js
-    assert "{loop_id}" in app_js
-    assert "needs_setup" in app_js
-    assert "Artifact directory missing" in app_js
-    assert "initLayoutResize" in app_js
-    assert "calo.leftPaneWidth" in app_js
-    assert "estimated_codex_tokens" in app_js
-    assert "formatDuration" in app_js
-    assert "JSON.stringify(loop" not in app_js
-    assert "JSON.stringify(event" not in app_js
+    asset_paths = sorted(set(re.findall(r"/ui/assets/[^\"']+", html.text)))
+    assert any(path.endswith(".js") for path in asset_paths)
+    assert any(path.endswith(".css") for path in asset_paths)
 
-    css = client.get("/ui/styles.css")
-    assert css.status_code == 200
-    assert ".loop-row" in css.text
-    assert ".phase-panel" in css.text
-    assert ".goal-form" in css.text
-    assert ".markdown-body" in css.text
-    assert ".markdown-preview-shell" in css.text
-    assert ".layout-splitter" in css.text
-    assert ".runner-banner" in css.text
-    assert ".repo-browser" in css.text
-    assert ".artifact-list" in css.text
-    assert ".artifact-browser" in css.text
-    assert ".artifact-workbench" in css.text
-    assert ".codex-session-timeline" in css.text
-    assert ".command-wizard" in css.text
-    assert ".task-graph" in css.text
-    assert ".detail-command-center" in css.text
-    assert ".detail-tab-list" in css.text
-    assert ".detail-scroll" in css.text
+    asset_payloads = []
+    for asset_path in asset_paths:
+        asset = client.get(asset_path)
+        assert asset.status_code == 200
+        asset_payloads.append(asset.text)
+    bundle = "\n".join(asset_payloads)
+
+    assert "/api/v1/dashboard" in bundle
+    assert "/api/v1/goals" in bundle
+    assert "/api/v1/context" in bundle
+    assert "/api/v1/filesystem" in bundle
+    assert "collect-callback" in bundle
+    assert "/task-adapter" in bundle
+    assert "/terminate" in bundle
+    assert "calo.language" in bundle
+    assert "calo.leftPaneWidth" in bundle
+    assert "Codex Agent Loop Orchestrator" in bundle
+    assert "短 Codex turn 与外部长任务的本地控制台。" in bundle
+    assert "Local control plane for short Codex turns and externally owned long work." in bundle
+    assert "goal-form" in bundle
+    assert "goal-objective-preview" in bundle
+    assert "Markdown preview" in bundle
+    assert "markdown-table-scroll" in bundle
+    assert "layout-splitter" in bundle
+    assert "Loop Queue" in bundle
+    assert "External work command wizard" in bundle
+    assert "data-command-wizard" in bundle
+    assert "Collect callback" in bundle
+    assert "Terminate local TaskRun" in bundle
+    assert "status !== \"waiting_callback\"" in bundle or "waiting_callback" in bundle
+    assert "artifact-source-filter" in bundle
+    assert "artifact-preview-panel" in bundle
+    assert "Codex sessions" in bundle
+    assert "Demo simulation" in bundle
+    assert "Real Codex CLI" in bundle
+    assert "data-detail-tab" in bundle
+    assert "Loop timeline" in bundle
+    assert "task.adapter.required" in bundle
+    assert "task-adapter-form" in bundle
+    assert "Configure and continue" in bundle
+    assert "Adapter configured; current turn continued" in bundle
+    assert "task.adapter.configured" in bundle
+    assert "task.adapter.validation.completed" in bundle
+    assert "{loop_id}" in bundle
+    assert "needs_setup" in bundle
+    assert "estimated_codex_tokens" in bundle
+    assert "JSON.stringify(loop" not in bundle
+    assert "JSON.stringify(event" not in bundle
 
 
 def test_web_ui_context_defaults_to_served_workspace(tmp_path: Path) -> None:

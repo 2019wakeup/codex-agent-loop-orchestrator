@@ -66,8 +66,29 @@ pytest -q
 Expected test result:
 
 ```text
-33 passed
+44 passed
 ```
+
+## Frontend Development
+
+The Web UI served at `/ui/` is built from the Vue 3 source in `frontend/`. Node is a build-time dependency only; the FastAPI service serves the generated static files from `src/calo/ui/`.
+
+Install and test the frontend:
+
+```bash
+cd frontend
+npm install
+npm test
+npm run build
+```
+
+Copy a production build into the Python package UI directory:
+
+```bash
+npm run build:package
+```
+
+That command builds with Vite base `/ui/` and replaces `src/calo/ui/` with the current Vue bundle. For temporary side-by-side checks during future migrations, `npm run build:preview` writes a bundle to `src/calo/ui_next/`; the FastAPI app mounts `/ui-next/` when that directory exists.
 
 ## Intended Product Flow
 

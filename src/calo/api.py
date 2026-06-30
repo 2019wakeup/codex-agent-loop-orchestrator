@@ -24,7 +24,10 @@ def create_app(db_path: Path | None = None) -> FastAPI:
     resolved_db_path = db_path or Path(".calo/state.sqlite3")
     store = StateStore(resolved_db_path)
     ui_dir = Path(__file__).parent / "ui"
+    ui_next_dir = Path(__file__).parent / "ui_next"
     app.mount("/ui", StaticFiles(directory=ui_dir, html=True), name="ui")
+    if ui_next_dir.exists():
+        app.mount("/ui-next", StaticFiles(directory=ui_next_dir, html=True), name="ui-next")
 
     def make_runner(kind: str = "local", model: str | None = None):
         if kind == "local":

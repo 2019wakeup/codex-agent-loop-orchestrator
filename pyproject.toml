@@ -29,7 +29,7 @@ calo = "calo.cli:app"
 where = ["src"]
 
 [tool.setuptools.package-data]
-calo = ["ui/*.html", "ui/*.css", "ui/*.js"]
+calo = ["ui/*.html", "ui/*.css", "ui/*.js", "ui/assets/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

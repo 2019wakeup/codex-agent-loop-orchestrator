@@ -90,7 +90,7 @@ def build_loop_summary(store: StateStore, state: LoopState, contract: LoopContra
         task_runs=store.list_task_runs(state.loop_id),
         artifacts=list_artifacts(contract.artifact_root, limit=30, preview_chars=240),
         operator_guidance=store.list_operator_guidance(state.loop_id),
-        recent_events=store.recent_events(state.loop_id),
+        recent_events=store.recent_events(state.loop_id, limit=24),
     )
 
 
