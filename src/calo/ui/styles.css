@@ -1247,7 +1247,7 @@ summary:focus-visible {
 .task-graph,
 .task-runs,
 .codex-sessions,
-.artifact-list,
+.codex-session-timeline,
 .guidance-list {
   display: grid;
   gap: 8px;
@@ -1255,11 +1255,105 @@ summary:focus-visible {
 
 .task-graph,
 .task-runs,
-.codex-sessions {
+.codex-sessions,
+.codex-session-timeline {
   padding: 10px;
   border: 1px solid var(--line);
   border-radius: var(--radius);
   background: #f7fafc;
+}
+
+.codex-turn {
+  display: grid;
+  gap: 9px;
+}
+
+.codex-turn-head,
+.artifact-preview-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.codex-turn-head strong,
+.artifact-preview-head strong {
+  min-width: 0;
+  overflow: hidden;
+  font-family: var(--mono);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.codex-turn-head span,
+.artifact-preview-head span,
+.artifact-count {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.codex-role-lanes {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.codex-role-card {
+  min-width: 0;
+  padding: 11px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: #ffffff;
+}
+
+.codex-role-card.running {
+  border-color: #9cc8ba;
+  background: #fbfefd;
+}
+
+.codex-role-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.codex-role-title strong {
+  font-size: 13px;
+}
+
+.codex-role-card p {
+  min-height: 38px;
+  margin-top: 7px;
+  color: #516173;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.artifact-link-list {
+  display: grid;
+  gap: 5px;
+  margin-top: 9px;
+}
+
+.artifact-link-list span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 740;
+}
+
+.artifact-link-list code {
+  min-width: 0;
+  overflow: hidden;
+  padding: 5px 6px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: #f7fafc;
+  color: var(--text);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .task-graph-head,
@@ -1310,27 +1404,119 @@ summary:focus-visible {
   line-height: 1.45;
 }
 
-.artifact-entry summary,
 .event-details summary {
   cursor: pointer;
 }
 
-.artifact-entry summary {
-  color: var(--text);
-  font-size: 13px;
-  font-weight: 740;
+.artifact-browser {
+  display: grid;
+  gap: 10px;
 }
 
-.artifact-entry summary span {
+.artifact-toolbar {
+  display: grid;
+  grid-template-columns: minmax(180px, 1.2fr) repeat(3, minmax(120px, 0.8fr));
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: #f7fafc;
+}
+
+.artifact-toolbar .field-block {
+  gap: 4px;
+}
+
+.artifact-toolbar .field-block span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 760;
+}
+
+.artifact-workbench {
+  display: grid;
+  grid-template-columns: minmax(220px, 0.85fr) minmax(0, 1.4fr);
+  gap: 10px;
+  min-height: 420px;
+}
+
+.artifact-list {
+  display: grid;
+  align-content: start;
+  max-height: 520px;
+  gap: 8px;
+  overflow: auto;
+  padding-right: 2px;
+}
+
+.artifact-entry {
+  display: grid;
+  width: 100%;
+  min-width: 0;
+  gap: 5px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: #ffffff;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.artifact-entry.selected {
+  border-color: #147d64;
+  box-shadow: 0 0 0 2px rgba(20, 125, 100, 0.12);
+}
+
+.artifact-entry > span,
+.artifact-entry > small {
   min-width: 0;
   overflow: hidden;
-  font-family: var(--mono);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.artifact-entry pre {
-  max-height: 220px;
+.artifact-entry > span {
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 780;
+}
+
+.artifact-entry > small {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.artifact-preview-panel {
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: #ffffff;
+}
+
+.artifact-preview-head {
+  align-items: flex-start;
+}
+
+.artifact-preview-head div {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.artifact-preview-head small {
+  flex: 0 0 auto;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.artifact-trace {
+  margin-top: 2px;
+}
+
+.artifact-preview-panel pre {
+  max-height: 400px;
   margin: 11px 0 0;
   overflow: auto;
   padding: 12px;
@@ -1343,6 +1529,83 @@ summary:focus-visible {
   font-family: var(--mono);
   font-size: 12px;
   line-height: 1.5;
+  white-space: pre-wrap;
+}
+
+.command-wizard {
+  display: grid;
+  gap: 10px;
+  padding: 10px;
+  border: 1px solid #cfdbe7;
+  border-radius: var(--radius);
+  background: #fbfcfd;
+}
+
+.command-wizard[hidden] {
+  display: none;
+}
+
+.command-wizard-head {
+  display: grid;
+  gap: 3px;
+}
+
+.command-wizard-head strong {
+  color: var(--text);
+  font-size: 13px;
+}
+
+.command-wizard-head span {
+  color: #516173;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.command-wizard-grid {
+  display: grid;
+  grid-template-columns: minmax(120px, 0.6fr) minmax(180px, 1fr);
+  gap: 8px;
+}
+
+.token-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.token-button {
+  padding: 5px 7px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: #ffffff;
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 720;
+  cursor: pointer;
+}
+
+.generated-command {
+  display: grid;
+  gap: 5px;
+}
+
+.generated-command span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 760;
+}
+
+.generated-command code {
+  min-width: 0;
+  overflow: auto;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: #ffffff;
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 12px;
   white-space: pre-wrap;
 }
 
@@ -1595,6 +1858,10 @@ summary:focus-visible {
   .key-grid,
   .field-grid,
   .guidance-controls,
+  .codex-role-lanes,
+  .artifact-toolbar,
+  .artifact-workbench,
+  .command-wizard-grid,
   .repo-picker-row,
   .repo-browser-head {
     grid-template-columns: 1fr;

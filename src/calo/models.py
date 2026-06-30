@@ -5,7 +5,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 def utc_now() -> str:
@@ -114,6 +114,28 @@ class GoalRequest(BaseModel):
             raise ValueError("loop_id must be a single path-safe token")
         return value
 
+    @field_validator("task_command")
+    @classmethod
+    def command_adapter_must_wake_loop(cls, value: str | None, info) -> str | None:
+        if info.data.get("task_adapter_mode") == "command":
+            command = (value or "").strip()
+            if not command:
+                raise ValueError("task_command is required when task_adapter_mode is command")
+            if "{callback_file}" not in command:
+                raise ValueError("task_command must include {callback_file} so the TaskRun can wake the loop")
+            return command
+        return value
+
+    @model_validator(mode="after")
+    def command_adapter_requires_wake_command(self) -> "GoalRequest":
+        if self.task_adapter_mode == "command":
+            command = (self.task_command or "").strip()
+            if not command:
+                raise ValueError("task_command is required when task_adapter_mode is command")
+            if "{callback_file}" not in command:
+                raise ValueError("task_command must include {callback_file} so the TaskRun can wake the loop")
+        return self
+
 
 class OperatorGuidanceRequest(BaseModel):
     message: str = Field(min_length=1)
@@ -144,6 +166,28 @@ class TaskAdapterRequest(BaseModel):
     validation_command: str | None = None
     task_command: str | None = None
     continue_current_turn: bool = True
+
+    @field_validator("task_command")
+    @classmethod
+    def command_adapter_must_wake_loop(cls, value: str | None, info) -> str | None:
+        if info.data.get("task_adapter_mode") == "command":
+            command = (value or "").strip()
+            if not command:
+                raise ValueError("task_command is required when task_adapter_mode is command")
+            if "{callback_file}" not in command:
+                raise ValueError("task_command must include {callback_file} so the TaskRun can wake the loop")
+            return command
+        return value
+
+    @model_validator(mode="after")
+    def command_adapter_requires_wake_command(self) -> "TaskAdapterRequest":
+        if self.task_adapter_mode == "command":
+            command = (self.task_command or "").strip()
+            if not command:
+                raise ValueError("task_command is required when task_adapter_mode is command")
+            if "{callback_file}" not in command:
+                raise ValueError("task_command must include {callback_file} so the TaskRun can wake the loop")
+        return self
 
 
 class OperatorGuidance(BaseModel):
@@ -192,6 +236,16 @@ class LoopContract(BaseModel):
         if value in {".", ".."} or not value or any(char not in allowed for char in value):
             raise ValueError("loop_id must be a single path-safe token")
         return value
+
+    @model_validator(mode="after")
+    def command_adapter_requires_wake_command(self) -> "LoopContract":
+        if self.task_adapter_mode == "command":
+            command = (self.commands.train or "").strip()
+            if not command:
+                raise ValueError("commands.train is required when task_adapter_mode is command")
+            if "{callback_file}" not in command:
+                raise ValueError("commands.train must include {callback_file} so the TaskRun can wake the loop")
+        return self
 
 
 class LoopState(BaseModel):
@@ -318,6 +372,11 @@ class ArtifactEntry(BaseModel):
     size_bytes: int
     modified_at: str
     preview: str | None = None
+    source: str = "unknown"
+    role: Literal["planner", "worker", "judge", "taskrun", "operator", "system", "unknown"] = "unknown"
+    turn_id: str | None = None
+    run_id: str | None = None
+    display_name: str | None = None
 
 
 class LoopSummary(BaseModel):

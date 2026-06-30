@@ -10,6 +10,11 @@ const state = {
   detailTab: "overview",
   repoOptions: [],
   repoBrowserPath: "",
+  artifactSearch: "",
+  artifactKind: "all",
+  artifactSource: "all",
+  artifactTurn: "all",
+  selectedArtifactPath: "",
 };
 
 const paneResize = {
@@ -127,6 +132,47 @@ const zh = {
   "No Codex role session has been recorded yet.": "还没有记录 Codex role session。",
   "No artifacts are available yet.": "还没有 artifact。",
   "Preview not available for this file type.": "此文件类型没有 preview。",
+  "Artifact browser": "Artifact browser",
+  "Search artifacts": "Search artifacts",
+  "Filter by kind": "Filter by kind",
+  "Filter by source": "Filter by source",
+  "Filter by turn": "Filter by turn",
+  "All kinds": "All kinds",
+  "All sources": "All sources",
+  "All turns": "All turns",
+  "No artifacts match the current filters.": "没有 artifact 符合当前筛选。",
+  "Select an artifact": "选择一个 artifact",
+  "Choose a file on the left to inspect its preview and trace metadata.": "从左侧选择文件，查看 preview 和 trace metadata。",
+  "Preview": "Preview",
+  "Trace": "Trace",
+  "Source": "Source",
+  "Role": "Role",
+  "Kind": "Kind",
+  "Size": "Size",
+  "Modified": "Modified",
+  "Turn": "Turn",
+  "Run": "Run",
+  "Matches": "Matches",
+  "Codex session timeline": "Codex session timeline",
+  "Real Codex CLI session": "Real Codex CLI session",
+  "Demo simulated session": "Demo simulated session",
+  "not started": "not started",
+  running: "running",
+  completed: "completed",
+  "Evidence links": "Evidence links",
+  "External work command wizard": "External work command wizard",
+  "Task type": "Task type",
+  "Python script": "Python script",
+  "Shell command": "Shell command",
+  Custom: "Custom",
+  "Script path": "Script path",
+  "Command body": "Command body",
+  "Generated command": "Generated command",
+  "Insert token": "Insert token",
+  "Writes callback file": "Writes callback file",
+  "The command must include {callback_file} so CALO can wake the paused loop with evidence.": "命令必须包含 {callback_file}，CALO 才能用 evidence 唤醒暂停的 Loop。",
+  "Command wizard generated": "Command 已生成",
+  "Command adapter needs {callback_file} so the TaskRun can wake the loop.": "Command adapter 需要 {callback_file}，TaskRun 才能唤醒 Loop。",
   "No operator guidance has been submitted yet.": "还没有提交 operator guidance。",
   "Revised objective": "已修订 objective",
   "Scopes the next turn and writes the task graph.": "定义下一个 turn 的范围并写入 task graph。",
@@ -689,6 +735,10 @@ function syncTaskAdapterFields() {
   const runner = els.goalRunner?.value || state.runner || "codex-cli";
   const showCommands = mode === "command" || mode === "demo";
   els.adapterCommandFields.hidden = !showCommands;
+  els.goalTaskCommand?.closest(".wide-field")?.toggleAttribute("hidden", mode !== "command");
+  els.goalForm?.querySelectorAll("[data-command-wizard]").forEach((wizard) => {
+    wizard.hidden = mode !== "command";
+  });
   if (mode === "none") {
     els.adapterHelp.textContent =
       t("Stop boundary: CALO can run the Codex turn, then stops before commit or TaskRun launch.");
@@ -700,7 +750,7 @@ function syncTaskAdapterFields() {
     if (els.goalValidationCommand && !els.goalValidationCommand.value.trim()) {
       els.goalValidationCommand.value = "python -m py_compile target_app.py";
     }
-    if (els.goalTaskCommand && !els.goalTaskCommand.value.trim()) {
+    if (els.goalTaskCommand && !els.goalTaskCommand.value.includes("fake_train.py")) {
       els.goalTaskCommand.value =
         "python fake_train.py --callback-file {callback_file} --run-id {run_id} --turn-id {turn_id}";
     }
@@ -714,6 +764,118 @@ function syncTaskAdapterFields() {
       els.goalTaskCommand.value = "";
     }
   }
+  syncCommandWizard(els.goalForm);
+}
+
+function commandWizardMarkup(scope, inputId) {
+  return `
+    <div class="command-wizard" data-command-wizard="${escapeAttribute(scope)}">
+      <div class="command-wizard-head">
+        <strong>${escapeHtml(t("External work command wizard"))}</strong>
+        <span>${escapeHtml(t("The command must include {callback_file} so CALO can wake the paused loop with evidence."))}</span>
+      </div>
+      <div class="command-wizard-grid">
+        <label class="field-block">
+          <span>${escapeHtml(t("Task type"))}</span>
+          <select data-wizard-type aria-label="${escapeHtml(t("Task type"))}">
+            <option value="python">${escapeHtml(t("Python script"))}</option>
+            <option value="shell">${escapeHtml(t("Shell command"))}</option>
+            <option value="custom">${escapeHtml(t("Custom"))}</option>
+          </select>
+        </label>
+        <label class="field-block">
+          <span>${escapeHtml(t("Script path"))}</span>
+          <input data-wizard-script type="text" value="train.py" placeholder="train.py" />
+        </label>
+        <label class="field-block wide-field">
+          <span>${escapeHtml(t("Command body"))}</span>
+          <input data-wizard-body type="text" value="python train.py" placeholder="python train.py" />
+        </label>
+      </div>
+      <div class="token-row" aria-label="${escapeHtml(t("Insert token"))}">
+        ${["{callback_file}", "{run_id}", "{turn_id}", "{loop_id}"]
+          .map((token) => `<button class="token-button" type="button" data-token="${escapeAttribute(token)}">${escapeHtml(token)}</button>`)
+          .join("")}
+      </div>
+      <div class="generated-command">
+        <span>${escapeHtml(t("Generated command"))}</span>
+        <code data-generated-command></code>
+      </div>
+      <div class="form-message wizard-message" data-wizard-message role="status" aria-live="polite"></div>
+      <input data-wizard-target="${escapeAttribute(inputId)}" type="hidden" />
+    </div>
+  `;
+}
+
+function findWizardTarget(form, wizard) {
+  const id = wizard?.querySelector("[data-wizard-target]")?.dataset.wizardTarget;
+  return id ? form.querySelector(`#${CSS.escape(id)}`) : null;
+}
+
+function generatedWizardCommand(wizard) {
+  const type = wizard.querySelector("[data-wizard-type]")?.value || "python";
+  const script = wizard.querySelector("[data-wizard-script]")?.value.trim() || "train.py";
+  const body = wizard.querySelector("[data-wizard-body]")?.value.trim() || "";
+  const suffix = "--callback-file {callback_file} --run-id {run_id} --turn-id {turn_id} --loop-id {loop_id}";
+  if (type === "python") return `python ${script} ${suffix}`.trim();
+  if (type === "shell") return `${body || "bash run.sh"} ${suffix}`.trim();
+  return body;
+}
+
+function syncCommandWizard(form) {
+  if (!form) return;
+  form.querySelectorAll("[data-command-wizard]").forEach((wizard) => {
+    const target = findWizardTarget(form, wizard);
+    const generated = wizard.querySelector("[data-generated-command]");
+    const message = wizard.querySelector("[data-wizard-message]");
+    const command = generatedWizardCommand(wizard);
+    if (generated) generated.textContent = command;
+    if (target && command && (!target.value.trim() || !target.value.includes("{callback_file}"))) target.value = command;
+    const active = target?.value.trim() || command;
+    const ok = active.includes("{callback_file}");
+    if (message) {
+      message.textContent = ok ? t("Command wizard generated") : t("Command adapter needs {callback_file} so the TaskRun can wake the loop.");
+      message.className = `form-message wizard-message ${ok ? "success" : "error"}`;
+    }
+  });
+}
+
+function attachCommandWizard(form) {
+  if (!form) return;
+  form.querySelectorAll("[data-command-wizard]").forEach((wizard) => {
+    const target = findWizardTarget(form, wizard);
+    const type = wizard.querySelector("[data-wizard-type]");
+    const script = wizard.querySelector("[data-wizard-script]");
+    const body = wizard.querySelector("[data-wizard-body]");
+    const sync = () => {
+      const command = generatedWizardCommand(wizard);
+      if (target) target.value = command;
+      syncCommandWizard(form);
+    };
+    type?.addEventListener("change", () => {
+      const isPython = type.value === "python";
+      script.closest(".field-block").hidden = !isPython;
+      body.closest(".field-block").hidden = isPython;
+      sync();
+    });
+    script?.addEventListener("input", sync);
+    body?.addEventListener("input", sync);
+    wizard.querySelectorAll("[data-token]").forEach((button) => {
+      button.addEventListener("click", () => {
+        if (type && type.value === "python") type.value = "custom";
+        const receiver = body;
+        if (!receiver) return;
+        receiver.value = `${receiver.value.trim()} ${button.dataset.token}`.trim();
+        type?.dispatchEvent(new Event("change"));
+        sync();
+      });
+    });
+    type?.dispatchEvent(new Event("change"));
+  });
+}
+
+function validateCommandCallback(command) {
+  return command.includes("{callback_file}");
 }
 
 function syncRunnerDefaults() {
@@ -812,61 +974,132 @@ function renderTaskRuns(taskRuns) {
   `;
 }
 
+function artifactRelativePath(value) {
+  if (!value) return "";
+  const text = `${value}`;
+  const marker = "/.codex/agent-loop/";
+  const index = text.indexOf(marker);
+  if (index === -1) return text;
+  const rest = text.slice(index + marker.length);
+  const parts = rest.split("/");
+  return parts.length > 1 ? parts.slice(1).join("/") : rest;
+}
+
+function artifactOptions(artifacts, key, allLabel, selectedValue) {
+  const values = [...new Set((artifacts || []).map((artifact) => artifact[key]).filter(Boolean))].sort();
+  return [`<option value="all" ${selectedValue === "all" ? "selected" : ""}>${escapeHtml(t(allLabel))}</option>`]
+    .concat(
+      values.map(
+        (value) => `<option value="${escapeAttribute(value)}" ${selectedValue === value ? "selected" : ""}>${escapeHtml(labelize(value))}</option>`
+      )
+    )
+    .join("");
+}
+
+function filteredArtifacts(artifacts) {
+  const search = state.artifactSearch.trim().toLowerCase();
+  return (artifacts || []).filter((artifact) => {
+    const searchable = [artifact.path, artifact.display_name, artifact.kind, artifact.source, artifact.role, artifact.turn_id, artifact.run_id]
+      .filter(Boolean)
+      .join(" ")
+      .toLowerCase();
+    return (
+      (!search || searchable.includes(search)) &&
+      (state.artifactKind === "all" || artifact.kind === state.artifactKind) &&
+      (state.artifactSource === "all" || artifact.source === state.artifactSource) &&
+      (state.artifactTurn === "all" || artifact.turn_id === state.artifactTurn)
+    );
+  });
+}
+
 function renderCodexSessions(events) {
-  const byType = new Map((events || []).map((event) => [event.event_type, event]));
-  const sessions = [
-    {
-      role: "Planner",
-      started: byType.get("codex.planner.started"),
-      completed: byType.get("codex.planner.completed"),
-      artifactKey: "plan_path",
-      body: t("Scopes the next turn and writes the task graph."),
-    },
-    {
-      role: "Worker",
-      started: byType.get("codex.worker.started"),
-      completed: byType.get("codex.worker.completed"),
-      artifactKey: null,
-      body: t("Applies the approved source changes for this turn."),
-    },
-    {
-      role: "Judge",
-      started: null,
-      completed: byType.get("codex.judge.completed"),
-      artifactKey: null,
-      body: t("Reviews evidence and produces an advisory verdict."),
-    },
-  ];
   if (!events || !events.length) {
     return `<div class="empty-timeline">${escapeHtml(t("No Codex role session has been recorded yet."))}</div>`;
   }
+  const turns = new Map();
+  const ensureTurn = (turnId) => {
+    const key = turnId || "turn_unknown";
+    if (!turns.has(key)) turns.set(key, { turn_id: key, roles: {} });
+    return turns.get(key);
+  };
+  for (const event of events) {
+    const match = event.event_type.match(/^codex\.(planner|worker|judge)\.(started|completed)$/);
+    if (!match) continue;
+    const [, role, phase] = match;
+    const payload = event.payload || {};
+    const turn = ensureTurn(payload.turn_id);
+    if (!turn.roles[role]) turn.roles[role] = {};
+    turn.roles[role][phase] = { ...event, payload };
+  }
+  if (!turns.size) {
+    return `<div class="empty-timeline">${escapeHtml(t("No Codex role session has been recorded yet."))}</div>`;
+  }
+  const roleDefs = [
+    { key: "planner", label: "Planner", body: t("Scopes the next turn and writes the task graph.") },
+    { key: "worker", label: "Worker", body: t("Applies the approved source changes for this turn.") },
+    { key: "judge", label: "Judge", body: t("Reviews evidence and produces an advisory verdict.") },
+  ];
   return `
-    <div class="codex-sessions">
-      ${sessions
-        .map((session) => {
-          const completed = session.completed?.payload || null;
-          const started = session.started?.payload || null;
-          const payload = completed || started || {};
-          const status = completed ? "completed" : started ? "running" : "not started";
-          const artifact = session.artifactKey ? payload[session.artifactKey] : payload.last_message_path;
-          return `
-            <article class="codex-session">
-              <div class="codex-session-head">
-                <strong>${escapeHtml(session.role)}</strong>
-                <span class="${statusClass(status === "completed" ? "ready" : status === "running" ? "codex_running" : "neutral")}">${escapeHtml(status)}</span>
+    <div class="codex-session-timeline" aria-label="${escapeHtml(t("Codex session timeline"))}">
+      ${[...turns.values()]
+        .map(
+          (turn) => `
+            <section class="codex-turn">
+              <div class="codex-turn-head">
+                <strong>${escapeHtml(turn.turn_id)}</strong>
+                <span>${escapeHtml(t("Codex session timeline"))}</span>
               </div>
-              <p>${escapeHtml(session.body)}</p>
-              <div class="chip-row">
-                ${renderChips([
-                  { label: "backend", value: payload.runner_label || (payload.runner_kind ? runnerText(payload.runner_kind) : null) },
-                  { label: "turn", value: payload.turn_id },
-                  { label: "artifact", value: artifact },
-                  { label: "last message", value: payload.last_message_path },
-                ])}
+              <div class="codex-role-lanes">
+                ${roleDefs
+                  .map((roleDef) => {
+                    const roleEvents = turn.roles[roleDef.key] || {};
+                    const completed = roleEvents.completed?.payload || null;
+                    const started = roleEvents.started?.payload || null;
+                    const payload = completed || started || {};
+                    const status = completed ? "completed" : started ? "running" : "not started";
+                    const realLabel = completed || started
+                      ? payload.runner_is_simulated === false
+                        ? t("Real Codex CLI session")
+                        : t("Demo simulated session")
+                      : null;
+                    const links = [
+                      payload.plan_path,
+                      payload.task_graph_path,
+                      payload.last_message_path,
+                      roleDef.key === "judge" ? `judge/${turn.turn_id}.json` : null,
+                      roleDef.key === "worker" ? `worker/${turn.turn_id}.json` : null,
+                    ]
+                      .filter(Boolean)
+                      .map(artifactRelativePath);
+                    return `
+                      <article class="codex-role-card ${status}">
+                        <div class="codex-role-title">
+                          <strong>${escapeHtml(roleDef.label)}</strong>
+                          <span class="${statusClass(status === "completed" ? "ready" : status === "running" ? "codex_running" : "neutral")}">${escapeHtml(t(status))}</span>
+                        </div>
+                        <p>${escapeHtml(roleDef.body)}</p>
+                        <div class="chip-row">
+                          ${renderChips([
+                            { label: "backend", value: payload.runner_label || (payload.runner_kind ? runnerText(payload.runner_kind) : null) },
+                            { label: "mode", value: realLabel },
+                            { label: "model", value: payload.runner_model },
+                          ])}
+                        </div>
+                        ${
+                          links.length
+                            ? `<div class="artifact-link-list"><span>${escapeHtml(t("Evidence links"))}</span>${links
+                                .map((link) => `<code>${escapeHtml(link)}</code>`)
+                                .join("")}</div>`
+                            : ""
+                        }
+                      </article>
+                    `;
+                  })
+                  .join("")}
               </div>
-            </article>
-          `;
-        })
+            </section>
+          `
+        )
         .join("")}
     </div>
   `;
@@ -876,21 +1109,86 @@ function renderArtifacts(artifacts) {
   if (!artifacts || !artifacts.length) {
     return `<div class="empty-timeline">${escapeHtml(t("No artifacts are available yet."))}</div>`;
   }
+  const visible = filteredArtifacts(artifacts);
+  const selected = visible.find((artifact) => artifact.path === state.selectedArtifactPath) || visible[0] || null;
+  if (selected && state.selectedArtifactPath !== selected.path) state.selectedArtifactPath = selected.path;
   return `
-    <div class="artifact-list">
-      ${artifacts
-        .map(
-          (artifact) => `
-            <details class="artifact-entry">
-              <summary>
-                <span>${escapeHtml(artifact.path)}</span>
-                <small>${escapeHtml(labelize(artifact.kind))} · ${escapeHtml(formatValue(artifact.size_bytes))} bytes</small>
-              </summary>
-              <pre>${escapeHtml(artifact.preview || t("Preview not available for this file type."))}</pre>
-            </details>
-          `
-        )
-        .join("")}
+    <div class="artifact-browser" aria-label="${escapeHtml(t("Artifact browser"))}">
+      <div class="artifact-toolbar">
+        <label class="field-block">
+          <span>${escapeHtml(t("Search artifacts"))}</span>
+          <input id="artifact-search" type="search" value="${escapeAttribute(state.artifactSearch)}" placeholder="task_graph, judge, run_0001" />
+        </label>
+        <label class="field-block">
+          <span>${escapeHtml(t("Filter by kind"))}</span>
+          <select id="artifact-kind-filter">${artifactOptions(artifacts, "kind", "All kinds", state.artifactKind)}</select>
+        </label>
+        <label class="field-block">
+          <span>${escapeHtml(t("Filter by source"))}</span>
+          <select id="artifact-source-filter">${artifactOptions(artifacts, "source", "All sources", state.artifactSource)}</select>
+        </label>
+        <label class="field-block">
+          <span>${escapeHtml(t("Filter by turn"))}</span>
+          <select id="artifact-turn-filter">${artifactOptions(artifacts, "turn_id", "All turns", state.artifactTurn)}</select>
+        </label>
+      </div>
+      <div class="artifact-count">${escapeHtml(visible.length)} ${escapeHtml(t("Matches"))}</div>
+      <div class="artifact-workbench">
+        <div class="artifact-list" role="listbox" aria-label="${escapeHtml(t("Artifacts"))}">
+          ${
+            visible.length
+              ? visible
+                  .map(
+                    (artifact) => `
+                      <button class="artifact-entry ${artifact.path === selected?.path ? "selected" : ""}" type="button" data-artifact-path="${escapeAttribute(artifact.path)}" role="option" aria-selected="${artifact.path === selected?.path ? "true" : "false"}">
+                        <span>${escapeHtml(artifact.display_name || artifact.path)}</span>
+                        <small>${escapeHtml(artifact.path)}</small>
+                        <div class="chip-row">
+                          ${renderChips([
+                            { label: "source", value: labelize(artifact.source) },
+                            { label: "role", value: labelize(artifact.role) },
+                            { label: "turn", value: artifact.turn_id },
+                            { label: "run", value: artifact.run_id },
+                          ])}
+                        </div>
+                      </button>
+                    `
+                  )
+                  .join("")
+              : `<div class="empty-timeline">${escapeHtml(t("No artifacts match the current filters."))}</div>`
+          }
+        </div>
+        <article class="artifact-preview-panel">
+          ${
+            selected
+              ? `
+                <div class="artifact-preview-head">
+                  <div>
+                    <span>${escapeHtml(t("Preview"))}</span>
+                    <strong>${escapeHtml(selected.path)}</strong>
+                  </div>
+                  <small>${escapeHtml(labelize(selected.kind))} · ${escapeHtml(formatValue(selected.size_bytes))} bytes</small>
+                </div>
+                <div class="artifact-trace">
+                  ${renderChips([
+                    { label: t("Source"), value: labelize(selected.source) },
+                    { label: t("Role"), value: labelize(selected.role) },
+                    { label: t("Turn"), value: selected.turn_id },
+                    { label: t("Run"), value: selected.run_id },
+                    { label: t("Modified"), value: formatDate(selected.modified_at) },
+                  ])}
+                </div>
+                <pre>${escapeHtml(selected.preview || t("Preview not available for this file type."))}</pre>
+              `
+              : `
+                <div class="empty-timeline">
+                  <strong>${escapeHtml(t("Select an artifact"))}</strong><br />
+                  ${escapeHtml(t("Choose a file on the left to inspect its preview and trace metadata."))}
+                </div>
+              `
+          }
+        </article>
+      </div>
     </div>
   `;
 }
@@ -1264,6 +1562,40 @@ function renderEvents(events) {
     .join("");
 }
 
+function attachArtifactBrowser(loop) {
+  const search = els.detail.querySelector("#artifact-search");
+  const kind = els.detail.querySelector("#artifact-kind-filter");
+  const source = els.detail.querySelector("#artifact-source-filter");
+  const turn = els.detail.querySelector("#artifact-turn-filter");
+  const rerender = () => renderDetail(loop);
+  search?.addEventListener("input", () => {
+    state.artifactSearch = search.value;
+    state.selectedArtifactPath = "";
+    rerender();
+  });
+  kind?.addEventListener("change", () => {
+    state.artifactKind = kind.value;
+    state.selectedArtifactPath = "";
+    rerender();
+  });
+  source?.addEventListener("change", () => {
+    state.artifactSource = source.value;
+    state.selectedArtifactPath = "";
+    rerender();
+  });
+  turn?.addEventListener("change", () => {
+    state.artifactTurn = turn.value;
+    state.selectedArtifactPath = "";
+    rerender();
+  });
+  els.detail.querySelectorAll("[data-artifact-path]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.selectedArtifactPath = button.dataset.artifactPath;
+      rerender();
+    });
+  });
+}
+
 function actionConfig(loop) {
   const status = loop.status;
   const activeStates = new Set([
@@ -1526,6 +1858,10 @@ async function submitGoal(event) {
     setGoalMessage(t("Command adapter needs a long-work adapter command."), "error");
     return;
   }
+  if (taskAdapterMode === "command" && !validateCommandCallback(taskCommand)) {
+    setGoalMessage(t("Command adapter needs {callback_file} so the TaskRun can wake the loop."), "error");
+    return;
+  }
 
   const payload = {
     objective,
@@ -1652,7 +1988,8 @@ function renderTaskAdapterSetup(loop) {
         </div>
         <div class="field-block wide-field">
           <label for="adapter-task-command">${escapeHtml(t("External work command"))}</label>
-          <input id="adapter-task-command" name="task_command" type="text" placeholder="python train.py --callback-file {callback_file} --run-id {run_id} --turn-id {turn_id} --loop-id {loop_id}" />
+          <input id="adapter-task-command" name="task_command" type="hidden" />
+          ${commandWizardMarkup("detail", "adapter-task-command")}
           <small class="field-help">${escapeHtml(t("{callback_file}, {run_id}, {turn_id}, and {loop_id} are filled by CALO so the run can wake the loop with evidence."))}</small>
         </div>
       </div>
@@ -1669,20 +2006,24 @@ function syncDetailAdapterFields() {
   const help = form.querySelector("#adapter-setup-help");
   const validation = form.querySelector("#adapter-validation-command");
   const task = form.querySelector("#adapter-task-command");
+  task?.closest(".wide-field")?.toggleAttribute("hidden", mode !== "command");
   fields.hidden = mode === "none";
   if (mode === "demo") {
     help.textContent = t("Demo mode writes a tiny score fixture and fake TaskRun script. Use it only to test lifecycle wiring.");
     if (!validation.value.trim()) validation.value = "python -m py_compile target_app.py";
-    if (!task.value.trim()) {
+    if (!task.value.includes("fake_train.py")) {
       task.value = "python fake_train.py --callback-file {callback_file} --run-id {run_id} --turn-id {turn_id}";
     }
+    syncCommandWizard(form);
   } else if (mode === "command") {
     help.textContent = t("Command mode re-runs the quick check, then launches your real external work after the accepted Codex turn.");
     if (task.value.includes("fake_train.py")) task.value = "";
+    syncCommandWizard(form);
   } else {
     help.textContent = t("Stop boundary: CALO can run the Codex turn, then stops before commit or TaskRun launch.");
     validation.value = "";
     task.value = "";
+    syncCommandWizard(form);
   }
 }
 
@@ -1694,6 +2035,9 @@ async function submitTaskAdapter(loop) {
   const taskCommand = `${formData.get("task_command") || ""}`.trim();
   if (mode === "command" && !taskCommand) {
     throw new Error(t("Command adapter needs an external work command."));
+  }
+  if (mode === "command" && !validateCommandCallback(taskCommand)) {
+    throw new Error(t("Command adapter needs {callback_file} so the TaskRun can wake the loop."));
   }
   const payload = {
     task_adapter_mode: mode,
@@ -1734,6 +2078,7 @@ function render() {
         state.actionMessage = "";
         state.actionMessageKind = "";
         state.detailTab = "overview";
+        state.selectedArtifactPath = "";
       }
       state.selectedLoopId = loop.loop_id;
       render();
@@ -1939,6 +2284,7 @@ function renderDetail(loop) {
       renderDetail(loop);
     });
   });
+  attachArtifactBrowser(loop);
   els.detail.querySelectorAll("[data-action]").forEach((button) => {
     button.addEventListener("click", async () => {
       button.disabled = true;
@@ -1999,6 +2345,7 @@ function renderDetail(loop) {
   if (adapterForm) {
     const mode = adapterForm.querySelector("#adapter-setup-mode");
     mode.addEventListener("change", syncDetailAdapterFields);
+    attachCommandWizard(adapterForm);
     syncDetailAdapterFields();
     adapterForm.addEventListener("submit", async (event) => {
       event.preventDefault();
@@ -2044,6 +2391,7 @@ if (els.languageToggle) {
 }
 initRepoBrowser();
 initLayoutResize();
+attachCommandWizard(els.goalForm);
 applyI18n();
 syncGoalMarkdownPreview();
 syncTaskAdapterFields();

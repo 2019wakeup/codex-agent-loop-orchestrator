@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -30,6 +31,54 @@ def write_text(path: Path, text: str) -> None:
     path.write_text(text, encoding="utf-8")
 
 
+def _artifact_metadata(relative: str) -> dict[str, str | None]:
+    first = relative.split("/", 1)[0] if relative else ""
+    role_map = {
+        "plan": "planner",
+        "worker": "worker",
+        "handoff": "worker",
+        "judge": "judge",
+        "runs": "taskrun",
+        "guidance": "operator",
+        "reports": "system",
+        "evidence": "system",
+        "task_graph": "system",
+    }
+    source_map = {
+        "plan": "planner_plan",
+        "worker": "worker_summary",
+        "handoff": "worker_handoff",
+        "judge": "judge_report",
+        "runs": "taskrun",
+        "guidance": "operator_guidance",
+        "reports": "report",
+        "evidence": "evidence_packet",
+        "task_graph": "task_graph",
+    }
+    turn_match = re.search(r"(turn_\d+)", relative)
+    run_match = re.search(r"(run_\d+)", relative)
+    name = Path(relative).name
+    return {
+        "source": source_map.get(first, first or "unknown"),
+        "role": role_map.get(first, "unknown"),
+        "turn_id": turn_match.group(1) if turn_match else None,
+        "run_id": run_match.group(1) if run_match else None,
+        "display_name": name,
+    }
+
+
+def _preview(path: Path, kind: str, preview_chars: int) -> str | None:
+    if kind not in {"json", "markdown", "text", "log"}:
+        return None
+    text = path.read_text(encoding="utf-8", errors="replace")
+    if kind == "json":
+        try:
+            text = json.dumps(json.loads(text), indent=2, ensure_ascii=False)
+        except json.JSONDecodeError:
+            pass
+    return text[:preview_chars]
+
+
 def list_artifacts(root: Path, limit: int = 80, preview_chars: int = 400) -> list[ArtifactEntry]:
     if not root.exists():
         return []
@@ -46,16 +95,15 @@ def list_artifacts(root: Path, limit: int = 80, preview_chars: int = 400) -> lis
         relative = path.relative_to(root).as_posix()
         kind = suffix_kinds.get(path.suffix.lower(), "file")
         stat = path.stat()
-        preview = None
-        if kind in {"json", "markdown", "text", "log"}:
-            preview = path.read_text(encoding="utf-8", errors="replace")[:preview_chars]
+        metadata = _artifact_metadata(relative)
         entries.append(
             ArtifactEntry(
                 path=relative,
                 kind=kind,
                 size_bytes=stat.st_size,
                 modified_at=datetime.fromtimestamp(stat.st_mtime, tz=timezone.utc).isoformat(),
-                preview=preview,
+                preview=_preview(path, kind, preview_chars),
+                **metadata,
             )
         )
     return entries

@@ -372,7 +372,7 @@ def test_api_rejects_adapter_configuration_while_running(tmp_path: Path) -> None
 
     response = client.post(
         "/api/v1/loops/adapter_running_loop/task-adapter",
-        json={"task_adapter_mode": "command", "task_command": "python train.py"},
+        json={"task_adapter_mode": "command", "task_command": "python train.py --callback-file {callback_file}"},
     )
 
     assert response.status_code == 409
@@ -393,8 +393,70 @@ def test_goal_command_adapter_requires_task_command(tmp_path: Path) -> None:
         },
     )
 
-    assert response.status_code == 400
+    assert response.status_code == 422
     assert "task_command is required" in response.text
+
+
+def test_goal_command_adapter_requires_callback_file_placeholder(tmp_path: Path) -> None:
+    app = create_app(tmp_path / "api.sqlite3")
+    client = TestClient(app)
+    response = client.post(
+        "/api/v1/goals",
+        json={
+            "loop_id": "missing_wake_goal",
+            "objective": "Reject unwakeable command adapter",
+            "repo_path": str(tmp_path / "missing_wake_repo"),
+            "task_adapter_mode": "command",
+            "task_command": "python train.py --run-id {run_id}",
+        },
+    )
+
+    assert response.status_code == 422
+    assert "task_command must include {callback_file}" in response.text
+
+
+def test_api_task_adapter_requires_callback_file_placeholder(tmp_path: Path) -> None:
+    app = create_app(tmp_path / "api.sqlite3")
+    client = TestClient(app)
+    contract = LoopContract(
+        loop_id="adapter_missing_wake",
+        objective="Reject unwakeable adapter setup",
+        repo_path=tmp_path / "adapter_missing_wake_repo",
+        target_value=0.7,
+        runner_kind="local",
+        execution_mode="async",
+        task_adapter_mode="none",
+    )
+    assert client.post("/api/v1/loops", json=contract.model_dump(mode="json")).status_code == 200
+
+    response = client.post(
+        "/api/v1/loops/adapter_missing_wake/task-adapter",
+        json={"task_adapter_mode": "command", "task_command": "python train.py --run-id {run_id}"},
+    )
+
+    assert response.status_code == 422
+    assert "task_command must include {callback_file}" in response.text
+
+
+def test_api_raw_loop_contract_requires_callback_file_placeholder(tmp_path: Path) -> None:
+    app = create_app(tmp_path / "api.sqlite3")
+    client = TestClient(app)
+    response = client.post(
+        "/api/v1/loops",
+        json={
+            "loop_id": "raw_missing_wake",
+            "objective": "Reject raw unwakeable command loop",
+            "repo_path": str(tmp_path / "raw_missing_wake_repo"),
+            "task_adapter_mode": "command",
+            "commands": {
+                "validation": "pytest -q",
+                "train": "python train.py --run-id {run_id}",
+            },
+        },
+    )
+
+    assert response.status_code == 422
+    assert "commands.train must include {callback_file}" in response.text
 
 
 def test_api_step_and_collect_callback_support_web_async_flow(tmp_path: Path) -> None:
@@ -447,7 +509,13 @@ def test_api_step_and_collect_callback_support_web_async_flow(tmp_path: Path) ->
 
     artifacts = client.get("/api/v1/loops/web_async_loop/artifacts")
     assert artifacts.status_code == 200
-    assert any(entry["path"] == "task_graph/turn_0001.json" for entry in artifacts.json())
+    entries = artifacts.json()
+    task_graph_artifact = next(entry for entry in entries if entry["path"] == "task_graph/turn_0001.json")
+    assert task_graph_artifact["source"] == "task_graph"
+    assert task_graph_artifact["role"] == "system"
+    assert task_graph_artifact["turn_id"] == "turn_0001"
+    assert task_graph_artifact["display_name"] == "turn_0001.json"
+    assert "\n  " in task_graph_artifact["preview"]
 
 
 def test_api_rejects_double_step_while_waiting_callback(tmp_path: Path) -> None:
@@ -633,6 +701,9 @@ def test_web_ui_static_routes(tmp_path: Path) -> None:
     assert "Adapter commands" in html.text
     assert "Quick check command" in html.text
     assert "Long-work adapter command" in html.text
+    assert "External work command wizard" in html.text
+    assert "Generated command" in html.text
+    assert "data-command-wizard" in html.text
     assert "Diff review" in html.text
     assert "Auto commit" in html.text
 
@@ -656,6 +727,14 @@ def test_web_ui_static_routes(tmp_path: Path) -> None:
     assert "renderTaskGraph" in app_js
     assert "renderTaskRuns" in app_js
     assert "renderArtifacts" in app_js
+    assert "artifact-source-filter" in app_js
+    assert "artifact-preview-panel" in app_js
+    assert "renderCodexSessions" in app_js
+    assert "codex-session-timeline" in app_js
+    assert "Demo simulated session" in app_js
+    assert "Real Codex CLI session" in app_js
+    assert "attachCommandWizard" in app_js
+    assert "validateCommandCallback" in app_js
     assert "Terminate local TaskRun" in app_js
     assert "command-groups" in app_js
     assert "/terminate" in app_js
@@ -702,6 +781,10 @@ def test_web_ui_static_routes(tmp_path: Path) -> None:
     assert ".runner-banner" in css.text
     assert ".repo-browser" in css.text
     assert ".artifact-list" in css.text
+    assert ".artifact-browser" in css.text
+    assert ".artifact-workbench" in css.text
+    assert ".codex-session-timeline" in css.text
+    assert ".command-wizard" in css.text
     assert ".task-graph" in css.text
     assert ".detail-command-center" in css.text
     assert ".detail-tab-list" in css.text

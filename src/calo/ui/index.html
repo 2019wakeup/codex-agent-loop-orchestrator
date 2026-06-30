@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Codex Agent Loop Orchestrator</title>
-    <link rel="stylesheet" href="/ui/styles.css?v=20260630-md-brief" />
+    <link rel="stylesheet" href="/ui/styles.css?v=20260630-evidence-workbench" />
   </head>
   <body>
     <header class="topbar">
@@ -129,7 +129,43 @@
               </div>
               <div class="field-block wide-field">
                 <label for="goal-task-command" data-i18n="Long-work adapter command">Long-work adapter command</label>
-                <input id="goal-task-command" name="task_command" type="text" value="" placeholder="python train.py --callback-file {callback_file} --run-id {run_id} --turn-id {turn_id} --loop-id {loop_id}" />
+                <input id="goal-task-command" name="task_command" type="hidden" value="" />
+                <div class="command-wizard" data-command-wizard="goal">
+                  <div class="command-wizard-head">
+                    <strong data-i18n="External work command wizard">External work command wizard</strong>
+                    <span data-i18n="The command must include {callback_file} so CALO can wake the paused loop with evidence.">命令必须包含 {callback_file}，CALO 才能用 evidence 唤醒暂停的 Loop。</span>
+                  </div>
+                  <div class="command-wizard-grid">
+                    <label class="field-block">
+                      <span data-i18n="Task type">Task type</span>
+                      <select data-wizard-type aria-label="Task type">
+                        <option value="python" data-i18n="Python script">Python script</option>
+                        <option value="shell" data-i18n="Shell command">Shell command</option>
+                        <option value="custom" data-i18n="Custom">Custom</option>
+                      </select>
+                    </label>
+                    <label class="field-block">
+                      <span data-i18n="Script path">Script path</span>
+                      <input data-wizard-script type="text" value="train.py" placeholder="train.py" />
+                    </label>
+                    <label class="field-block wide-field">
+                      <span data-i18n="Command body">Command body</span>
+                      <input data-wizard-body type="text" value="python train.py" placeholder="python train.py" />
+                    </label>
+                  </div>
+                  <div class="token-row" aria-label="Insert token">
+                    <button class="token-button" type="button" data-token="{callback_file}">{callback_file}</button>
+                    <button class="token-button" type="button" data-token="{run_id}">{run_id}</button>
+                    <button class="token-button" type="button" data-token="{turn_id}">{turn_id}</button>
+                    <button class="token-button" type="button" data-token="{loop_id}">{loop_id}</button>
+                  </div>
+                  <div class="generated-command">
+                    <span data-i18n="Generated command">Generated command</span>
+                    <code data-generated-command></code>
+                  </div>
+                  <div class="form-message wizard-message" data-wizard-message role="status" aria-live="polite"></div>
+                  <input data-wizard-target="goal-task-command" type="hidden" />
+                </div>
                 <small class="field-help" data-i18n="Required for command mode. CALO fills callback, run, turn, and loop placeholders.">Command mode 必填。CALO 会填充 callback、run、turn 和 loop 占位符。</small>
               </div>
             </div>
