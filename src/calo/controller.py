@@ -176,8 +176,8 @@ class LoopController:
                 "task.adapter.required",
                 {
                     "turn_id": turn_id,
-                    "reason": "no TaskRun adapter is configured; long work was not launched and changes were not auto-committed",
-                    "next_step": "choose a command adapter, demo adapter, or submit a manual callback integration before continuing",
+                    "reason": "no external work mode is configured; long work was not launched and changes were not auto-committed",
+                    "next_step": "choose Run my command, Demo fake TaskRun, or submit a manual callback integration before continuing",
                     "task_adapter_mode": contract.task_adapter_mode,
                     **runner_meta,
                 },
@@ -197,7 +197,7 @@ class LoopController:
     def configure_task_adapter(self, contract: LoopContract, request: TaskAdapterRequest) -> LoopState:
         state = self.store.load_state(contract.loop_id)
         if state.status not in {LoopStatus.NEEDS_SETUP, LoopStatus.READY, LoopStatus.PAUSED, LoopStatus.REVIEW_REQUIRED}:
-            raise ValueError(f"cannot configure TaskRun adapter while loop status is {state.status}")
+            raise ValueError(f"cannot configure external work mode while loop status is {state.status}")
         previous_mode = contract.task_adapter_mode
         self._apply_task_adapter_request(contract, request)
         write_json(contract.artifact_root / "contract.json", contract)

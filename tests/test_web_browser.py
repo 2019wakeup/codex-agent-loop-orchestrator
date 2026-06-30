@@ -130,22 +130,38 @@ def test_web_buttons_and_action_messages_in_real_browser(tmp_path: Path) -> None
             expect(page.get_by_text("Repository folder selected.")).to_be_visible()
             assert page.locator("#goal-repo").input_value() == str(browsed_repo)
 
-            markdown_goal = "**Browser acceptance async loop**\n\n- Evidence clarity\n- Operator intent\n\n`callback_ready` must be visible"
+            markdown_goal = (
+                "**Browser acceptance async loop**\n\n"
+                "| Signal | Expectation |\n"
+                "| --- | --- |\n"
+                "| Evidence | readable |\n"
+                "| Operator intent | explicit |\n\n"
+                "- Evidence clarity\n"
+                "- Operator intent\n\n"
+                "`callback_ready` must be visible"
+            )
             page.get_by_label("Goal brief").fill(markdown_goal)
             expect(page.locator("#goal-objective-preview strong")).to_contain_text("Browser acceptance async loop")
+            expect(page.locator("#goal-objective-preview table")).to_be_visible()
+            expect(page.locator("#goal-objective-preview .markdown-table-scroll")).to_be_visible()
+            expect(page.locator("#goal-objective-preview td").first).to_contain_text("Evidence")
             expect(page.locator("#goal-objective-preview li").first).to_contain_text("Evidence clarity")
             expect(page.locator("#goal-objective-preview code").first).to_contain_text("callback_ready")
             page.get_by_label("Execution backend").select_option("local")
-            expect(page.get_by_label("TaskRun adapter")).to_have_value("demo")
+            expect(page.get_by_label("External work mode")).to_have_value("demo")
             page.get_by_label("Loop ID").fill("browser_loop")
             page.get_by_label("Target score").fill("0.6")
             page.get_by_label("Max turns").fill("2")
             page.get_by_label("Async mode").check()
             page.get_by_role("button", name="Create loop").click()
-            expect(page.get_by_text("Created browser_loop with Demo simulation and Demo score adapter.")).to_be_visible()
+            expect(page.get_by_text("Created browser_loop with Demo simulation and Demo fake TaskRun.")).to_be_visible()
             expect(page.get_by_text("Demo simulation backend")).to_be_visible()
-            expect(page.get_by_text("Demo TaskRun adapter")).to_be_visible()
+            expect(page.get_by_text("Demo fake TaskRun mode")).to_be_visible()
             expect(page.locator(".objective-full").first.locator("strong")).to_contain_text("Browser acceptance async loop")
+            expect(page.locator(".objective-full").first.locator("table")).to_be_visible()
+            objective_box = page.locator(".objective-full").first.bounding_box()
+            assert objective_box is not None
+            assert objective_box["height"] <= 330
             expect(page.locator(".objective-full").first.locator("li").first).to_contain_text("Evidence clarity")
 
             page.get_by_role("tab", name="Work").click()
@@ -159,22 +175,26 @@ def test_web_buttons_and_action_messages_in_real_browser(tmp_path: Path) -> None
                 "Make the next turn focus on evidence clarity and operator intent."
             )
 
-            start = page.get_by_role("button", name="Start")
-            step = page.get_by_role("button", name="Step")
-            pause = page.get_by_role("button", name="Pause")
-            collect = page.get_by_role("button", name="Await callback")
-            terminate = page.get_by_role("button", name="Terminate TaskRun")
+            expect(page.get_by_text("Run", exact=True)).to_be_visible()
+            expect(page.get_by_text("Wake", exact=True)).to_be_visible()
+            expect(page.get_by_text("Loop control", exact=True)).to_be_visible()
+            expect(page.get_by_text("TaskRun process", exact=True)).to_be_visible()
+            start = page.get_by_role("button", name="Run until pause")
+            step = page.get_by_role("button", name="Run one turn")
+            pause = page.get_by_role("button", name="Pause loop")
+            terminate = page.get_by_role("button", name="Terminate local TaskRun")
             expect(start).to_be_enabled()
             expect(step).to_be_enabled()
             expect(pause).to_be_enabled()
-            expect(collect).to_be_disabled()
+            expect(page.get_by_text("Callback not ready")).to_be_visible()
             expect(terminate).to_be_disabled()
 
             step.click()
-            expect(page.get_by_text("Step succeeded: waiting callback.")).to_be_visible()
+            expect(page.get_by_text("Run one turn succeeded: waiting callback.")).to_be_visible()
             expect(page.get_by_text("Operational pause").first).to_be_visible()
-            expect(page.get_by_role("button", name="Pause", exact=True)).to_be_disabled()
-            expect(page.get_by_role("button", name="Terminate TaskRun")).to_be_enabled()
+            expect(page.get_by_role("button", name="Pause loop", exact=True)).to_be_disabled()
+            expect(page.get_by_role("button", name="Terminate local TaskRun")).to_be_enabled()
+            expect(page.get_by_text("Waiting for callback")).to_be_visible()
             expect(page.get_by_text("Task graph", exact=True)).to_be_visible()
             expect(page.get_by_text("TaskRuns", exact=True)).to_be_visible()
             page.get_by_role("tab", name="Overview").click()
@@ -224,7 +244,7 @@ Path(args.callback_file).write_text(json.dumps(payload), encoding="utf-8")
                 "/api/v1/loops",
                 f"""{{
                   "loop_id": "browser_recover_loop",
-                  "objective": "Recover a loop that started without a TaskRun adapter",
+                  "objective": "Recover a loop that started without external work mode",
                   "repo_path": "{recover_repo}",
                   "target_value": 0.7,
                   "runner_kind": "local",
@@ -233,22 +253,22 @@ Path(args.callback_file).write_text(json.dumps(payload), encoding="utf-8")
             )
             page.get_by_role("button", name="Refresh").click()
             page.get_by_role("button", name="browser_recover_loop ready").click()
-            expect(page.get_by_text("No long-work adapter configured")).to_be_visible()
-            expect(page.get_by_role("button", name="Step")).to_be_enabled()
-            page.get_by_role("button", name="Step").click()
-            expect(page.get_by_text("Step succeeded: needs setup.")).to_be_visible()
-            expect(page.get_by_text("TaskRun adapter required").first).to_be_visible()
-            expect(page.get_by_role("button", name="Start", exact=True)).to_be_disabled()
-            expect(page.get_by_role("button", name="Step", exact=True)).to_be_disabled()
-            expect(page.get_by_text("Connect real external work to this accepted turn")).to_be_visible()
-            expect(page.get_by_label("Adapter type")).to_have_value("command")
+            expect(page.get_by_text("No external work configured")).to_be_visible()
+            expect(page.get_by_role("button", name="Run one turn")).to_be_enabled()
+            page.get_by_role("button", name="Run one turn").click()
+            expect(page.get_by_text("Run one turn succeeded: needs setup.")).to_be_visible()
+            expect(page.get_by_text("External work mode required").first).to_be_visible()
+            expect(page.get_by_role("button", name="Run until pause", exact=True)).to_be_disabled()
+            expect(page.get_by_role("button", name="Run one turn", exact=True)).to_be_disabled()
+            expect(page.get_by_text("Choose what happens to this accepted change")).to_be_visible()
+            expect(page.get_by_label("External work type")).to_have_value("command")
             page.get_by_label("External work command").fill(
                 "python write_callback.py --callback-file {callback_file} --run-id {run_id} --turn-id {turn_id} --loop-id {loop_id}"
             )
             page.get_by_role("button", name="Configure and continue").click()
             expect(page.get_by_text("Adapter configured; current turn continued: completed.")).to_be_visible()
             expect(page.get_by_text("Target reached")).to_be_visible()
-            expect(page.get_by_text("Command TaskRun adapter")).to_be_visible()
+            expect(page.get_by_text("Command TaskRun mode")).to_be_visible()
             page.get_by_role("tab", name="Work").click()
             expect(page.locator(".task-run").first).to_contain_text("succeeded")
             page.get_by_role("tab", name="Timeline").click()

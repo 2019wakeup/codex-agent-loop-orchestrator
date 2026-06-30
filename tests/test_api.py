@@ -376,7 +376,7 @@ def test_api_rejects_adapter_configuration_while_running(tmp_path: Path) -> None
     )
 
     assert response.status_code == 409
-    assert "cannot configure TaskRun adapter while loop status is" in response.text
+    assert "cannot configure external work mode while loop status is" in response.text
 
 
 def test_goal_command_adapter_requires_task_command(tmp_path: Path) -> None:
@@ -610,6 +610,7 @@ def test_web_ui_static_routes(tmp_path: Path) -> None:
     assert 'id="goal-objective-preview"' in html.text
     assert "Markdown preview" in html.text
     assert "Markdown supported" in html.text
+    assert "tables" in html.text
     assert 'id="layout-splitter"' in html.text
     assert 'role="separator"' in html.text
     assert "Goal brief" in html.text
@@ -623,11 +624,10 @@ def test_web_ui_static_routes(tmp_path: Path) -> None:
     assert "Execution backend" in html.text
     assert "Real Codex CLI" in html.text
     assert "Demo simulation" in html.text
-    assert "TaskRun adapter" in html.text
-    assert "尚未配置 long-work adapter" in html.text
-    assert 'data-i18n="No long-work adapter yet"' in html.text
-    assert "Command adapter" in html.text
-    assert "Demo score adapter" in html.text
+    assert "External work mode" in html.text
+    assert "Stop before TaskRun" in html.text
+    assert "Run my command" in html.text
+    assert "Demo fake TaskRun" in html.text
     assert "高级设置" in html.text
     assert 'data-i18n="Advanced settings"' in html.text
     assert "Adapter commands" in html.text
@@ -647,6 +647,8 @@ def test_web_ui_static_routes(tmp_path: Path) -> None:
     assert "calo.language" in app_js
     assert "function applyI18n" in app_js
     assert "function renderMarkdown" in app_js
+    assert "function renderMarkdownTable" in app_js
+    assert "markdown-table-scroll" in app_js
     assert "syncGoalMarkdownPreview" in app_js
     assert "zh-CN" in app_js
     assert 'status !== "waiting_callback"' in app_js
@@ -654,7 +656,8 @@ def test_web_ui_static_routes(tmp_path: Path) -> None:
     assert "renderTaskGraph" in app_js
     assert "renderTaskRuns" in app_js
     assert "renderArtifacts" in app_js
-    assert "Terminate TaskRun" in app_js
+    assert "Terminate local TaskRun" in app_js
+    assert "command-groups" in app_js
     assert "/terminate" in app_js
     assert "Action failed" not in app_js
     assert "failed:" in app_js
@@ -666,7 +669,7 @@ def test_web_ui_static_routes(tmp_path: Path) -> None:
     assert "runnerText" in app_js
     assert 'start: status === "ready"' in app_js
     assert "Demo simulation backend" in app_js
-    assert "No hidden fake training is running" in app_js
+    assert "No external work configured" in app_js
     assert "Codex sessions" in app_js
     assert "detailTab" in app_js
     assert "data-detail-tab" in app_js

@@ -65,7 +65,7 @@ const zh = {
   "Create a goal, then hand off long work without keeping Codex awake.": "创建 goal，然后把长任务交给外部执行，Codex 不需要一直醒着。",
   "Goal brief": "Goal brief",
   "Describe the goal, constraints, and acceptance criteria in Markdown.": "用 Markdown 描述 goal、约束和验收标准。",
-  "Markdown supported: headings, lists, links, inline code, and fenced code blocks.": "支持 Markdown：标题、列表、链接、inline code 和 fenced code block。",
+  "Markdown supported: headings, tables, lists, links, inline code, and fenced code blocks.": "支持 Markdown：标题、表格、列表、链接、inline code 和 fenced code block。",
   "Markdown preview": "Markdown preview",
   "Markdown preview appears here.": "Markdown preview 会显示在这里。",
   Repository: "Repository",
@@ -78,11 +78,12 @@ const zh = {
   "Execution backend": "Execution backend",
   "Real Codex CLI": "Real Codex CLI",
   "Demo simulation": "Demo simulation",
-  "Stored on the loop and used by Start, Step, and callback judging.": "存到 Loop 上，供 Start、Step 和 callback judging 使用。",
-  "TaskRun adapter": "TaskRun adapter",
-  "No long-work adapter yet": "尚未配置 long-work adapter",
-  "Command adapter": "Command adapter",
-  "Demo score adapter": "Demo score adapter",
+  "Stored on the loop and used by Run controls and callback judging.": "存到 Loop 上，供 Run controls 和 callback judging 使用。",
+  "External work mode": "External work mode",
+  "Stop before TaskRun": "TaskRun 前停止",
+  "Run my command": "Run my command",
+  "Demo fake TaskRun": "Demo fake TaskRun",
+  "Choose what CALO does after an accepted Codex turn.": "选择 Codex turn 被接受后 CALO 要做什么。",
   "Controls whether accepted changes can launch external work after a Codex turn.": "控制 Codex turn 被接受后是否能启动外部任务。",
   Model: "Model",
   "backend default": "backend default",
@@ -96,7 +97,7 @@ const zh = {
   "max turns": "max turns",
   "Min delta": "Min delta",
   "Adapter commands": "Adapter commands",
-  "No long-work adapter is configured. CALO can run a short Codex turn, then stops before launching external work.": "尚未配置 long-work adapter。CALO 可以跑一个短 Codex turn，然后在启动外部任务前停止。",
+  "Stop boundary: CALO can run the Codex turn, then stops before commit or TaskRun launch.": "停止边界：CALO 可以运行 Codex turn，然后在 commit 或 TaskRun launch 前停止。",
   "Quick check command": "Quick check command",
   "optional, for example: pytest -q": "可选，例如：pytest -q",
   "Fast command CALO runs before launching long work.": "启动长任务前由 CALO 执行的快速检查命令。",
@@ -117,8 +118,8 @@ const zh = {
   "Loading directories...": "正在加载目录...",
   "No readable child directories.": "没有可读取的子目录。",
   "Directory could not be opened.": "无法打开目录。",
-  "No long-work adapter": "No long-work adapter",
-  "Demo mode writes a tiny score fixture and fake training script. Use it only to learn the lifecycle, not for real tasks.": "Demo mode 会写入一个小型 score fixture 和 fake training script。只用于理解生命周期，不用于真实任务。",
+  "No external work": "No external work",
+  "Demo mode writes a tiny score fixture and fake TaskRun script. Use it only to learn the lifecycle, not for real tasks.": "Demo mode 会写入一个小型 score fixture 和 fake TaskRun script。只用于理解生命周期，不用于真实任务。",
   "Command mode launches your real external work after a Codex turn. The command must write the callback file.": "Command mode 会在 Codex turn 后启动你的真实外部任务。该命令必须写入 callback file。",
   " Local backend still uses the deterministic demo Codex runner for Planner, Worker, and Judge.": " Local backend 仍使用确定性的 demo Codex runner 来模拟 Planner、Worker 和 Judge。",
   "No task graph has been recorded yet.": "还没有记录 task graph。",
@@ -169,9 +170,9 @@ const zh = {
   "Codex control has been released until a wake event arrives.": "Codex control 已释放，直到 wake event 到达。",
   "TaskRun launch blocked": "TaskRun launch 被阻止",
   "The orchestrator refused to enter operational pause without a durable owner and wake path.": "缺少持久 owner 和 wake path，orchestrator 拒绝进入 operational_pause。",
-  "TaskRun adapter required": "需要 TaskRun adapter",
-  "The orchestrator refused to launch long-running work because this loop has no TaskRun adapter.": "此 Loop 没有 TaskRun adapter，orchestrator 拒绝启动长任务。",
-  "TaskRun adapter configured": "TaskRun adapter 已配置",
+  "The orchestrator refused to launch long-running work because this loop has no external work mode.": "此 Loop 没有 External work mode，orchestrator 拒绝启动长任务。",
+  "External work mode required": "需要 External work mode",
+  "External work mode configured": "External work mode 已配置",
   "The loop contract now has an explicit adapter choice for external work.": "Loop contract 现在有明确的外部任务 adapter 选择。",
   "Continuing accepted turn": "继续已接受的 turn",
   "The orchestrator is continuing the already-reviewed turn after adapter setup.": "adapter setup 后，orchestrator 正在继续已 review 的 turn。",
@@ -183,11 +184,11 @@ const zh = {
   "The adapter quick check failed, so no commit or TaskRun was launched.": "adapter quick check 失败，因此没有 commit 或启动 TaskRun。",
   "Adapter update saved": "Adapter update 已保存",
   "The loop contract was updated without launching a TaskRun.": "Loop contract 已更新，没有启动 TaskRun。",
-  "The training callback was recorded.": "training callback 已记录。",
+  "The external work callback was recorded.": "External work callback 已记录。",
   "Duplicate callback ignored": "重复 callback 已忽略",
   "This run result had already been processed, so the orchestrator kept state unchanged.": "此 run result 已处理过，orchestrator 保持 state 不变。",
   "Callback processed": "Callback processed",
-  "The orchestrator updated loop state from the training result.": "Orchestrator 已根据 training result 更新 Loop state。",
+  "The orchestrator updated loop state from the TaskRun result.": "Orchestrator 已根据 TaskRun result 更新 Loop state。",
   "Goal guidance submitted": "Goal guidance 已提交",
   "Operator guidance submitted": "Operator guidance 已提交",
   "The loop objective was revised and the next Codex turn will receive this guidance.": "Loop objective 已修订，下一个 Codex turn 会收到这条 guidance。",
@@ -201,7 +202,7 @@ const zh = {
   "The orchestrator will not schedule more turns for this loop.": "Orchestrator 不会再为此 Loop 调度新的 turn。",
   "No lifecycle events have been recorded yet.": "还没有生命周期事件。",
   "Ready to start": "Ready to start",
-  "The orchestrator can run the next Codex turn when you start it.": "点击 Start 后，orchestrator 可以运行下一个 Codex turn。",
+  "The orchestrator can run the next Codex turn when you choose a Run control.": "选择 Run control 后，orchestrator 可以运行下一个 Codex turn。",
   "A Codex turn has produced evidence, but CALO stopped before committing or launching long work because no adapter is configured.": "Codex turn 已产生 evidence，但因为没有配置 adapter，CALO 在 commit 或启动长任务前停止。",
   "Planning next change": "Planning next change",
   "Codex is producing a scoped plan; lifecycle control remains with the orchestrator.": "Codex 正在生成 scoped plan，生命周期控制仍由 orchestrator 持有。",
@@ -213,8 +214,8 @@ const zh = {
   "The Judge role is scoring results and recommending a policy decision.": "Judge role 正在给结果评分并建议 policy decision。",
   "Checking policy": "Checking policy",
   "The Policy Engine is deciding whether to continue, pause, or complete.": "Policy Engine 正在决定继续、暂停还是完成。",
-  "Training is running": "Training is running",
-  "Codex is idle while the external command does the long work.": "外部命令执行长任务时，Codex 保持 idle。",
+  "TaskRun is running": "TaskRun 正在运行",
+  "Codex is idle while the external TaskRun does the long work.": "外部 TaskRun 执行长任务时，Codex 保持 idle。",
   "Operational pause": "Operational pause",
   "Codex is not monitoring. The external owner must write or post the wake result.": "Codex 不在监控。外部 owner 必须写入或提交 wake result。",
   "Human review required": "需要人工 review",
@@ -226,15 +227,15 @@ const zh = {
   "Inspect the latest event details and artifacts before retrying.": "重试前请检查最新 event details 和 artifacts。",
   Cancelled: "已取消",
   "This loop was stopped by a user action.": "此 Loop 已被用户操作停止。",
-  "Start the run or step one turn.": "Start run，或 Step 一个 turn。",
+  "Run until the next pause, or run exactly one turn.": "运行到下一个 pause，或只运行一个 turn。",
   "Choose a command adapter or cancel this loop; no external task is running.": "选择 command adapter 或取消此 Loop；当前没有外部任务在运行。",
-  "Wait for training to finish.": "等待 training 完成。",
+  "Wait for external work to finish.": "等待外部任务完成。",
   "Collect the callback from the wake path.": "从 wake path 收集 callback。",
   "Wait until the wake path exists.": "等待 wake path 出现。",
   "Resume the loop when ready.": "准备好后 Resume Loop。",
   "Review artifacts, then resume if acceptable.": "Review artifacts，确认可接受后 Resume。",
   "Read the final report or create a new loop.": "阅读 final report，或创建新的 Loop。",
-  "Inspect artifacts, fix the cause, then start again.": "检查 artifacts，修复原因，然后重新 Start。",
+  "Inspect artifacts, fix the cause, then run again.": "检查 artifacts，修复原因，然后重新 Run。",
   "No further action is scheduled.": "没有计划中的后续动作。",
   "Monitor the current orchestrator phase.": "观察当前 orchestrator phase。",
   "Unable to load dashboard:": "无法加载 dashboard：",
@@ -242,27 +243,27 @@ const zh = {
   "Command adapter needs a long-work adapter command.": "Command adapter 需要填写 long-work adapter command。",
   "Creating loop...": "正在创建 Loop...",
   "Created with": "已创建，使用",
-  "Select Start or Step to run the first turn.": "选择 Start 或 Step 运行第一个 turn。",
+  "Select Run until pause or Run one turn to begin.": "选择 Run until pause 或 Run one turn 开始。",
   Created: "已创建",
   with: "使用",
   "Create failed:": "创建失败：",
   "Guidance failed: write an instruction for the next Codex turn.": "Guidance 失败：请为下一个 Codex turn 填写 instruction。",
   "Demo simulation backend": "Demo simulation backend",
   "This loop uses the deterministic local runner. It does not open real Codex Planner, Worker, or Judge sessions.": "此 Loop 使用确定性的本地 runner，不会打开真实的 Codex Planner、Worker 或 Judge session。",
-  "Start, Step, and callback judging use the runner stored on this loop.": "Start、Step 和 callback judging 会使用存储在此 Loop 上的 runner。",
-  "No long-work adapter configured": "尚未配置 long-work adapter",
-  "CALO can run short Codex turns, but it will stop before auto-commit or external TaskRun launch. No hidden fake training is running.": "CALO 可以运行短 Codex turn，但会在 auto-commit 或启动外部 TaskRun 前停止。没有隐藏的 fake training 在运行。",
-  "Demo TaskRun adapter": "Demo TaskRun adapter",
+  "Run controls and callback judging use the runner stored on this loop.": "Run controls 和 callback judging 会使用存储在此 Loop 上的 runner。",
+  "No external work configured": "尚未配置外部任务",
+  "No TaskRun is running. CALO will stop before commit and external work until you choose Command or Demo.": "没有 TaskRun 在运行。选择 Command 或 Demo 前，CALO 会在 commit 和外部任务前停止。",
+  "Demo fake TaskRun mode": "Demo fake TaskRun mode",
   "This loop uses the fake score fixture for lifecycle testing. It is not executing your real workload.": "此 Loop 使用 fake score fixture 测试生命周期，不会执行你的真实 workload。",
-  "Command TaskRun adapter": "Command TaskRun adapter",
+  "Command TaskRun mode": "Command TaskRun mode",
   "Accepted changes can launch the configured external command with a callback file and run manifest.": "被接受的改动可以启动已配置的外部命令，并带上 callback file 和 run manifest。",
   "Artifact directory missing": "Artifact 目录缺失",
   "The database still has loop state, but the evidence directory is not present:": "数据库里仍有 Loop state，但 evidence 目录不存在：",
-  "TaskRun adapter setup": "TaskRun adapter setup",
-  "Connect real external work to this accepted turn": "把真实外部任务连接到这个已接受 turn",
-  "Connect external work before starting": "开始前连接外部任务",
-  "Command mode runs your workload and requires it to write CALO's callback file. Demo mode is only for lifecycle testing.": "Command mode 运行你的 workload，并要求它写入 CALO 的 callback file。Demo mode 只用于生命周期测试。",
-  "Adapter type": "Adapter type",
+  "External work setup": "External work setup",
+  "Choose what happens to this accepted change": "选择这个已接受 change 接下来做什么",
+  "Choose external work behavior before starting": "开始前选择外部任务行为",
+  "Command runs your workload. Demo records fake lifecycle evidence. None leaves the loop stopped without commit or TaskRun launch.": "Command 运行你的 workload。Demo 记录 fake 生命周期 evidence。None 会让 Loop 停在 commit 和 TaskRun launch 之前。",
+  "External work type": "External work type",
   "Run a real command after a Codex turn is accepted.": "Codex turn 被接受后运行真实命令。",
   "Continue current accepted turn": "继续当前已接受 turn",
   "Quick check": "Quick check",
@@ -271,7 +272,7 @@ const zh = {
   "{callback_file}, {run_id}, {turn_id}, and {loop_id} are filled by CALO so the run can wake the loop with evidence.": "{callback_file}、{run_id}、{turn_id} 和 {loop_id} 由 CALO 填充，让 run 能带着 evidence 唤醒 Loop。",
   "Configure and continue": "配置并继续",
   "Save adapter": "保存 adapter",
-  "Demo mode writes a tiny score fixture and fake training script. Use it only to test lifecycle wiring.": "Demo mode 会写入小型 score fixture 和 fake training script。只用于测试生命周期 wiring。",
+  "Demo mode writes a tiny score fixture and fake TaskRun script. Use it only to test lifecycle wiring.": "Demo mode 会写入小型 score fixture 和 fake TaskRun script。只用于测试生命周期 wiring。",
   "Command mode re-runs the quick check, then launches your real external work after the accepted Codex turn.": "Command mode 会重新运行 quick check，然后在已接受 Codex turn 后启动真实外部任务。",
   "No external work will launch. CALO will stop again when long-work setup is required.": "不会启动外部任务。需要 long-work setup 时，CALO 会再次停止。",
   "Command adapter needs an external work command.": "Command adapter 需要 external work command。",
@@ -314,14 +315,24 @@ const zh = {
   "Loop timeline": "Loop timeline",
   "Loop controls": "Loop controls",
   Actions: "Actions",
-  Start: "Start",
-  Step: "Step",
+  Run: "Run",
+  Wake: "Wake",
+  "Loop control": "Loop control",
+  "TaskRun process": "TaskRun process",
+  "Run until pause": "Run until pause",
+  "Run one turn": "Run one turn",
+  "Pause loop": "Pause loop",
+  "Resume loop": "Resume loop",
+  "Cancel orchestration": "Cancel orchestration",
+  "Terminate local TaskRun": "Terminate local TaskRun",
+  "Waiting for callback": "Waiting for callback",
+  "No callback is ready yet. CALO is paused; the external owner must write the wake result.": "callback 尚未 ready。CALO 已暂停，外部 owner 必须写入 wake result。",
+  "No TaskRun is running.": "没有 TaskRun 在运行。",
+  "No local subprocess is running for CALO to terminate.": "没有 CALO 可终止的本地 subprocess。",
   "Collect callback": "Collect callback",
-  "Await callback": "Await callback",
   Pause: "Pause",
   Resume: "Resume",
   Cancel: "Cancel",
-  "Terminate TaskRun": "Terminate TaskRun",
   "Loop detail sections": "Loop detail sections",
   succeeded: "succeeded",
   failed: "failed",
@@ -471,6 +482,45 @@ function renderInlineMarkdown(text) {
   return html;
 }
 
+function splitMarkdownTableRow(line) {
+  const trimmed = line.trim();
+  if (!trimmed.startsWith("|") || !trimmed.endsWith("|")) return null;
+  return trimmed
+    .slice(1, -1)
+    .split("|")
+    .map((cell) => cell.trim());
+}
+
+function isMarkdownTableDivider(line) {
+  const cells = splitMarkdownTableRow(line);
+  return Boolean(cells?.length) && cells.every((cell) => /^:?-{3,}:?$/.test(cell));
+}
+
+function renderMarkdownTable(headerLine, dividerLine, bodyLines) {
+  const headers = splitMarkdownTableRow(headerLine) || [];
+  const divider = splitMarkdownTableRow(dividerLine) || [];
+  const rows = bodyLines.map((line) => splitMarkdownTableRow(line)).filter(Boolean);
+  if (!headers.length || !divider.length || headers.length !== divider.length) return null;
+  return `
+    <div class="markdown-table-scroll">
+      <table>
+        <thead>
+          <tr>${headers.map((cell) => `<th>${renderInlineMarkdown(cell)}</th>`).join("")}</tr>
+        </thead>
+        <tbody>
+          ${rows
+            .map(
+              (row) => `
+                <tr>${headers.map((_header, index) => `<td>${renderInlineMarkdown(row[index] || "")}</td>`).join("")}</tr>
+              `
+            )
+            .join("")}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
 function renderMarkdown(markdown) {
   const source = `${markdown || ""}`.trim();
   if (!source) return `<p class="markdown-empty">${escapeHtml(t("Markdown preview appears here."))}</p>`;
@@ -503,7 +553,8 @@ function renderMarkdown(markdown) {
     flushQuote();
   };
 
-  for (const rawLine of lines) {
+  for (let index = 0; index < lines.length; index += 1) {
+    const rawLine = lines[index];
     const line = rawLine.replace(/\s+$/g, "");
     if (line.trim().startsWith("```")) {
       if (inCodeBlock) {
@@ -523,6 +574,21 @@ function renderMarkdown(markdown) {
     if (!line.trim()) {
       flushTextBlocks();
       continue;
+    }
+    if (splitMarkdownTableRow(line) && isMarkdownTableDivider(lines[index + 1] || "")) {
+      flushTextBlocks();
+      const bodyLines = [];
+      let next = index + 2;
+      while (next < lines.length && splitMarkdownTableRow(lines[next])) {
+        bodyLines.push(lines[next]);
+        next += 1;
+      }
+      const table = renderMarkdownTable(line, lines[index + 1], bodyLines);
+      if (table) {
+        blocks.push(table);
+        index = next - 1;
+        continue;
+      }
     }
     const heading = /^(#{1,3})\s+(.+)$/.exec(line);
     if (heading) {
@@ -610,9 +676,9 @@ function runnerText(loopOrKind, fallbackModel = "") {
 
 function taskAdapterText(mode) {
   const labels = {
-    none: t("No long-work adapter"),
-    command: t("Command adapter"),
-    demo: t("Demo score adapter"),
+    none: t("Stop before TaskRun"),
+    command: t("Run my command"),
+    demo: t("Demo fake TaskRun"),
   };
   return labels[mode] || labelize(mode);
 }
@@ -625,12 +691,12 @@ function syncTaskAdapterFields() {
   els.adapterCommandFields.hidden = !showCommands;
   if (mode === "none") {
     els.adapterHelp.textContent =
-      t("No long-work adapter is configured. CALO can run a short Codex turn, then stops before launching external work.");
+      t("Stop boundary: CALO can run the Codex turn, then stops before commit or TaskRun launch.");
     if (els.goalValidationCommand) els.goalValidationCommand.value = "";
     if (els.goalTaskCommand) els.goalTaskCommand.value = "";
   } else if (mode === "demo") {
     els.adapterHelp.textContent =
-      t("Demo mode writes a tiny score fixture and fake training script. Use it only to learn the lifecycle, not for real tasks.");
+      t("Demo mode writes a tiny score fixture and fake TaskRun script. Use it only to learn the lifecycle, not for real tasks.");
     if (els.goalValidationCommand && !els.goalValidationCommand.value.trim()) {
       els.goalValidationCommand.value = "python -m py_compile target_app.py";
     }
@@ -887,9 +953,9 @@ function renderGuidanceForm(loop) {
 function statusInsight(loop) {
   const target = `${loop.target_metric} ${formatValue(loop.target_value)}`;
   const messages = {
-    ready: [t("Ready to start"), t("The orchestrator can run the next Codex turn when you start it.")],
+    ready: [t("Ready to start"), t("The orchestrator can run the next Codex turn when you choose a Run control.")],
     needs_setup: [
-      t("TaskRun adapter required"),
+      t("External work mode required"),
       t("A Codex turn has produced evidence, but CALO stopped before committing or launching long work because no adapter is configured."),
     ],
     planning: [t("Planning next change"), t("Codex is producing a scoped plan; lifecycle control remains with the orchestrator.")],
@@ -897,7 +963,7 @@ function statusInsight(loop) {
     validation_running: [t("Running validation"), t("Fast checks are running before expensive work is launched.")],
     judging: [t("Evaluating evidence"), t("The Judge role is scoring results and recommending a policy decision.")],
     policy_checking: [t("Checking policy"), t("The Policy Engine is deciding whether to continue, pause, or complete.")],
-    training_running: [t("Training is running"), t("Codex is idle while the external command does the long work.")],
+    training_running: [t("TaskRun is running"), t("Codex is idle while the external TaskRun does the long work.")],
     waiting_callback: [t("Operational pause"), t("Codex is not monitoring. The external owner must write or post the wake result.")],
     review_required: [t("Human review required"), t("A gate or risk condition needs review before the loop continues.")],
     paused: [t("Paused"), t("Resume when you are ready for the orchestrator to continue.")],
@@ -910,14 +976,14 @@ function statusInsight(loop) {
 
 function nextActionText(loop) {
   const actions = {
-    ready: t("Start the run or step one turn."),
+    ready: t("Run until the next pause, or run exactly one turn."),
     needs_setup: t("Choose a command adapter or cancel this loop; no external task is running."),
-    training_running: t("Wait for training to finish."),
+    training_running: t("Wait for external work to finish."),
     waiting_callback: loop.callback_ready ? t("Collect the callback from the wake path.") : t("Wait until the wake path exists."),
     paused: t("Resume the loop when ready."),
     review_required: t("Review artifacts, then resume if acceptable."),
     completed: t("Read the final report or create a new loop."),
-    failed: t("Inspect artifacts, fix the cause, then start again."),
+    failed: t("Inspect artifacts, fix the cause, then run again."),
     cancelled: t("No further action is scheduled."),
   };
   return actions[loop.status] || t("Monitor the current orchestrator phase.");
@@ -1063,10 +1129,10 @@ function describeEvent(event) {
       ],
     },
     "task.adapter.required": {
-      title: t("TaskRun adapter required"),
+      title: t("External work mode required"),
       body:
         payload.reason ||
-        t("The orchestrator refused to launch long-running work because this loop has no TaskRun adapter."),
+        t("The orchestrator refused to launch long-running work because this loop has no external work mode."),
       chips: [
         { label: "turn", value: payload.turn_id },
         { label: "adapter", value: taskAdapterText(payload.task_adapter_mode) },
@@ -1074,7 +1140,7 @@ function describeEvent(event) {
       ],
     },
     "task.adapter.configured": {
-      title: t("TaskRun adapter configured"),
+      title: t("External work mode configured"),
       body: t("The loop contract now has an explicit adapter choice for external work."),
       chips: [
         { label: "previous", value: taskAdapterText(payload.previous_mode) },
@@ -1114,8 +1180,8 @@ function describeEvent(event) {
       chips: [{ label: "adapter", value: taskAdapterText(payload.task_adapter_mode) }],
     },
     "run.completed": {
-      title: `Training run ${labelize(payload.status || "completed")}`,
-      body: payload.summary || t("The training callback was recorded."),
+      title: `TaskRun ${labelize(payload.status || "completed")}`,
+      body: payload.summary || t("The external work callback was recorded."),
       chips: [
         { label: "run", value: payload.run_id },
         { label: "turn", value: payload.turn_id },
@@ -1130,7 +1196,7 @@ function describeEvent(event) {
     },
     "loop.callback.handled": {
       title: t("Callback processed"),
-      body: t("The orchestrator updated loop state from the training result."),
+      body: t("The orchestrator updated loop state from the TaskRun result."),
       chips: [
         { label: "turn", value: payload.turn_id },
         { label: "decision", value: labelize(payload.decision) },
@@ -1219,8 +1285,53 @@ function actionConfig(loop) {
     pause: !terminalStates.has(status) && status !== "paused" && status !== "waiting_callback" && status !== "needs_setup",
     resume: status === "paused" || status === "review_required",
     cancel: !terminalStates.has(status),
-    terminate: ["training_running", "waiting_callback"].includes(status) && Boolean(loop.last_run_id),
+    terminate:
+      ["training_running", "waiting_callback"].includes(status) &&
+      Boolean(loop.last_run_id) &&
+      loop.run_owner === "local_subprocess",
   };
+}
+
+function renderCommandControls(loop, actions) {
+  const waitingForCallback = loop.status === "waiting_callback" && !loop.callback_ready;
+  const noLocalRun = ["training_running", "waiting_callback"].includes(loop.status) && !actions.terminate;
+  return `
+    <div class="command-groups">
+      <div class="command-group">
+        <div class="command-group-title">${escapeHtml(t("Run"))}</div>
+        <div class="button-row">
+          <button class="button primary" data-action="start" ${actions.start ? "" : "disabled"}>${escapeHtml(t("Run until pause"))}</button>
+          <button class="button" data-action="step" ${actions.step ? "" : "disabled"}>${escapeHtml(t("Run one turn"))}</button>
+        </div>
+      </div>
+      <div class="command-group">
+        <div class="command-group-title">${escapeHtml(t("Wake"))}</div>
+        ${
+          loop.callback_ready
+            ? `<button class="button" data-action="collect-callback" ${actions.collect ? "" : "disabled"}>${escapeHtml(t("Collect callback"))}</button>`
+            : `
+              <div class="command-status ${waitingForCallback ? "waiting" : ""}">
+                <strong>${escapeHtml(waitingForCallback ? t("Waiting for callback") : t("Callback not ready"))}</strong>
+                <span>${escapeHtml(waitingForCallback ? t("No callback is ready yet. CALO is paused; the external owner must write the wake result.") : t("No TaskRun is running."))}</span>
+              </div>
+            `
+        }
+      </div>
+      <div class="command-group">
+        <div class="command-group-title">${escapeHtml(t("Loop control"))}</div>
+        <div class="button-row">
+          <button class="button" data-action="pause" ${actions.pause ? "" : "disabled"}>${escapeHtml(t("Pause loop"))}</button>
+          <button class="button" data-action="resume" ${actions.resume ? "" : "disabled"}>${escapeHtml(t("Resume loop"))}</button>
+          <button class="button danger-secondary" data-action="cancel" ${actions.cancel ? "" : "disabled"}>${escapeHtml(t("Cancel orchestration"))}</button>
+        </div>
+      </div>
+      <div class="command-group">
+        <div class="command-group-title">${escapeHtml(t("TaskRun process"))}</div>
+        <button class="button danger" data-action="terminate-run" ${actions.terminate ? "" : "disabled"}>${escapeHtml(t("Terminate local TaskRun"))}</button>
+        ${noLocalRun ? `<p class="command-note">${escapeHtml(t("No local subprocess is running for CALO to terminate."))}</p>` : ""}
+      </div>
+    </div>
+  `;
 }
 
 async function loadDashboard() {
@@ -1458,8 +1569,8 @@ async function submitGoal(event) {
     syncTaskAdapterFields();
     state.actionMessage =
       state.language === "zh"
-        ? `${t("Created with")} ${runnerText(state.runner, state.model)} 和 ${taskAdapterText(taskAdapterMode)}。${t("Select Start or Step to run the first turn.")}`
-        : `Created with ${runnerText(state.runner, state.model)} and ${taskAdapterText(taskAdapterMode)}. Select Start or Step to run the first turn.`;
+        ? `${t("Created with")} ${runnerText(state.runner, state.model)} 和 ${taskAdapterText(taskAdapterMode)}。${t("Select Run until pause or Run one turn to begin.")}`
+        : `Created with ${runnerText(state.runner, state.model)} and ${taskAdapterText(taskAdapterMode)}. Select Run until pause or Run one turn to begin.`;
     state.actionMessageKind = "success";
     setGoalMessage(
       state.language === "zh"
@@ -1510,21 +1621,21 @@ function renderTaskAdapterSetup(loop) {
   const continueChecked = loop.status === "needs_setup" ? "checked" : "";
   const continueDisabled = loop.status === "needs_setup" ? "" : "disabled";
   return `
-    <div class="section-title">${escapeHtml(t("TaskRun adapter setup"))}</div>
+    <div class="section-title">${escapeHtml(t("External work setup"))}</div>
     <form id="task-adapter-form" class="adapter-setup-form">
       <div class="adapter-setup-copy">
-        <strong>${escapeHtml(loop.status === "needs_setup" ? t("Connect real external work to this accepted turn") : t("Connect external work before starting"))}</strong>
+        <strong>${escapeHtml(loop.status === "needs_setup" ? t("Choose what happens to this accepted change") : t("Choose external work behavior before starting"))}</strong>
         <span>
-          ${escapeHtml(t("Command mode runs your workload and requires it to write CALO's callback file. Demo mode is only for lifecycle testing."))}
+          ${escapeHtml(t("Command runs your workload. Demo records fake lifecycle evidence. None leaves the loop stopped without commit or TaskRun launch."))}
         </span>
       </div>
       <div class="field-grid">
         <div class="field-block">
-          <label for="adapter-setup-mode">${escapeHtml(t("Adapter type"))}</label>
+          <label for="adapter-setup-mode">${escapeHtml(t("External work type"))}</label>
           <select id="adapter-setup-mode" name="task_adapter_mode">
-            <option value="command" selected>${escapeHtml(t("Command adapter"))}</option>
-            <option value="demo">${escapeHtml(t("Demo score adapter"))}</option>
-            <option value="none">${escapeHtml(t("No long-work adapter"))}</option>
+            <option value="command" selected>${escapeHtml(t("Run my command"))}</option>
+            <option value="demo">${escapeHtml(t("Demo fake TaskRun"))}</option>
+            <option value="none">${escapeHtml(t("Stop before TaskRun"))}</option>
           </select>
           <small id="adapter-setup-help" class="field-help">${escapeHtml(t("Run a real command after a Codex turn is accepted."))}</small>
         </div>
@@ -1560,7 +1671,7 @@ function syncDetailAdapterFields() {
   const task = form.querySelector("#adapter-task-command");
   fields.hidden = mode === "none";
   if (mode === "demo") {
-    help.textContent = t("Demo mode writes a tiny score fixture and fake training script. Use it only to test lifecycle wiring.");
+    help.textContent = t("Demo mode writes a tiny score fixture and fake TaskRun script. Use it only to test lifecycle wiring.");
     if (!validation.value.trim()) validation.value = "python -m py_compile target_app.py";
     if (!task.value.trim()) {
       task.value = "python fake_train.py --callback-file {callback_file} --run-id {run_id} --turn-id {turn_id}";
@@ -1569,7 +1680,7 @@ function syncDetailAdapterFields() {
     help.textContent = t("Command mode re-runs the quick check, then launches your real external work after the accepted Codex turn.");
     if (task.value.includes("fake_train.py")) task.value = "";
   } else {
-    help.textContent = t("No external work will launch. CALO will stop again when long-work setup is required.");
+    help.textContent = t("Stop boundary: CALO can run the Codex turn, then stops before commit or TaskRun launch.");
     validation.value = "";
     task.value = "";
   }
@@ -1656,35 +1767,35 @@ function renderDetail(loop) {
           : formatValue(loop.callback_ready);
   const runnerBanner = loop.runner_is_simulated
     ? `
-      <section class="runner-banner warning" aria-label="Execution backend">
+      <section class="runner-banner warning compact" aria-label="Execution backend">
         <strong>${escapeHtml(t("Demo simulation backend"))}</strong>
         <span>${escapeHtml(t("This loop uses the deterministic local runner. It does not open real Codex Planner, Worker, or Judge sessions."))}</span>
       </section>
     `
     : `
-      <section class="runner-banner ok" aria-label="Execution backend">
+      <section class="runner-banner ok compact" aria-label="Execution backend">
         <strong>${escapeHtml(runnerText(loop))}</strong>
-        <span>${escapeHtml(t("Start, Step, and callback judging use the runner stored on this loop."))}</span>
+        <span>${escapeHtml(t("Run controls and callback judging use the runner stored on this loop."))}</span>
       </section>
     `;
   const adapterBanner =
     loop.task_adapter_mode === "none"
       ? `
-      <section class="runner-banner warning" aria-label="TaskRun adapter">
-        <strong>${escapeHtml(t("No long-work adapter configured"))}</strong>
-        <span>${escapeHtml(t("CALO can run short Codex turns, but it will stop before auto-commit or external TaskRun launch. No hidden fake training is running."))}</span>
+      <section class="runner-banner warning compact" aria-label="External work mode">
+        <strong>${escapeHtml(t("No external work configured"))}</strong>
+        <span>${escapeHtml(t("No TaskRun is running. CALO will stop before commit and external work until you choose Command or Demo."))}</span>
       </section>
     `
       : loop.task_adapter_mode === "demo"
         ? `
-      <section class="runner-banner warning" aria-label="TaskRun adapter">
-        <strong>${escapeHtml(t("Demo TaskRun adapter"))}</strong>
+      <section class="runner-banner warning compact" aria-label="External work mode">
+        <strong>${escapeHtml(t("Demo fake TaskRun mode"))}</strong>
         <span>${escapeHtml(t("This loop uses the fake score fixture for lifecycle testing. It is not executing your real workload."))}</span>
       </section>
     `
         : `
-      <section class="runner-banner ok" aria-label="TaskRun adapter">
-        <strong>${escapeHtml(t("Command TaskRun adapter"))}</strong>
+      <section class="runner-banner ok compact" aria-label="External work mode">
+        <strong>${escapeHtml(t("Command TaskRun mode"))}</strong>
         <span>${escapeHtml(t("Accepted changes can launch the configured external command with a callback file and run manifest."))}</span>
       </section>
     `;
@@ -1721,7 +1832,7 @@ function renderDetail(loop) {
     <div class="key-grid">
       <div><span>${escapeHtml(t("Mode"))}</span><strong>${escapeHtml(loop.execution_mode)}</strong></div>
       <div><span>${escapeHtml(t("Execution backend"))}</span><strong>${escapeHtml(runnerText(loop))}</strong></div>
-      <div><span>${escapeHtml(t("TaskRun adapter"))}</span><strong>${escapeHtml(taskAdapterText(loop.task_adapter_mode))}</strong></div>
+      <div><span>${escapeHtml(t("External work mode"))}</span><strong>${escapeHtml(taskAdapterText(loop.task_adapter_mode))}</strong></div>
       <div><span>${escapeHtml(t("Last run"))}</span><strong>${escapeHtml(formatValue(loop.last_run_id))}</strong></div>
       <div><span>${escapeHtml(t("Last decision"))}</span><strong>${escapeHtml(loop.last_decision ? labelize(loop.last_decision) : "n/a")}</strong></div>
       <div><span>${escapeHtml(t("Updated"))}</span><strong>${escapeHtml(formatDate(loop.updated_at))}</strong></div>
@@ -1740,8 +1851,6 @@ function renderDetail(loop) {
     overview: `
       <div class="detail-overview-grid">
         <section class="detail-card">
-          <div class="section-title compact">${escapeHtml(t("Objective"))}</div>
-          <div class="objective-full markdown-body">${renderMarkdown(loop.objective)}</div>
           <div class="section-title compact">${escapeHtml(t("State"))}</div>
           ${stateGrid}
         </section>
@@ -1812,15 +1921,7 @@ function renderDetail(loop) {
         </div>
         <div class="command-actions">
           <div class="section-title compact">${escapeHtml(t("Actions"))}</div>
-          <div class="button-row">
-            <button class="button primary" data-action="start" ${actions.start ? "" : "disabled"}>${escapeHtml(t("Start"))}</button>
-            <button class="button" data-action="step" ${actions.step ? "" : "disabled"}>${escapeHtml(t("Step"))}</button>
-            <button class="button" data-action="collect-callback" ${actions.collect ? "" : "disabled"}>${escapeHtml(loop.callback_ready ? t("Collect callback") : t("Await callback"))}</button>
-            <button class="button" data-action="pause" ${actions.pause ? "" : "disabled"}>${escapeHtml(t("Pause"))}</button>
-            <button class="button" data-action="resume" ${actions.resume ? "" : "disabled"}>${escapeHtml(t("Resume"))}</button>
-            <button class="button danger" data-action="cancel" ${actions.cancel ? "" : "disabled"}>${escapeHtml(t("Cancel"))}</button>
-            <button class="button danger" data-action="terminate-run" ${actions.terminate ? "" : "disabled"}>${escapeHtml(t("Terminate TaskRun"))}</button>
-          </div>
+          ${renderCommandControls(loop, actions)}
           <div id="action-message" class="action-message ${escapeHtml(state.actionMessageKind)}" role="status" aria-live="polite">${escapeHtml(state.actionMessage)}</div>
         </div>
       </section>

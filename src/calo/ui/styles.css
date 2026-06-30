@@ -193,6 +193,17 @@ h2 {
   background: #ffeceb;
 }
 
+.button.danger-secondary {
+  border-color: #e7c9c6;
+  background: #ffffff;
+  color: var(--bad);
+}
+
+.button.danger-secondary:hover {
+  border-color: #d89b95;
+  background: #fff7f6;
+}
+
 .button:disabled {
   cursor: not-allowed;
   opacity: 0.45;
@@ -276,10 +287,13 @@ h2 {
 }
 
 .layout {
+  height: calc(100vh - 76px);
+  min-height: 620px;
   display: grid;
   grid-template-columns: var(--left-pane-width) 16px minmax(480px, 1fr);
   gap: 0;
   padding: 16px;
+  overflow: hidden;
 }
 
 .layout.is-resizing {
@@ -351,7 +365,10 @@ h2 {
 }
 
 .panel {
-  min-height: calc(100vh - 108px);
+  min-height: 0;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
   overflow: hidden;
   border: 1px solid var(--line);
   border-radius: 14px;
@@ -360,6 +377,7 @@ h2 {
 }
 
 .panel-header {
+  flex: 0 0 auto;
   min-height: 60px;
   display: flex;
   align-items: center;
@@ -379,10 +397,15 @@ h2 {
 .loop-list {
   display: flex;
   flex-direction: column;
+  min-height: 160px;
+  overflow: auto;
   border-top: 1px solid var(--line);
 }
 
 .goal-form {
+  flex: 0 0 auto;
+  max-height: 52%;
+  overflow: auto;
   display: grid;
   gap: 12px;
   padding: 14px;
@@ -757,6 +780,13 @@ summary:focus-visible {
   padding: 14px;
 }
 
+.detail-empty,
+.detail-body,
+#detail {
+  min-height: 0;
+  overflow: auto;
+}
+
 .detail-empty {
   color: var(--muted);
   font-size: 13px;
@@ -777,6 +807,13 @@ summary:focus-visible {
   border-radius: var(--radius-sm);
   background: var(--surface);
   font-size: 13px;
+}
+
+.runner-banner.compact {
+  grid-template-columns: max-content minmax(0, 1fr);
+  align-items: center;
+  margin-bottom: 0;
+  padding: 9px 11px;
 }
 
 .runner-banner strong {
@@ -870,6 +907,54 @@ summary:focus-visible {
   position: sticky;
   top: 12px;
   z-index: 1;
+}
+
+.command-groups {
+  display: grid;
+  gap: 10px;
+}
+
+.command-group {
+  display: grid;
+  gap: 7px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: #f8fafc;
+}
+
+.command-group-title {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 780;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.command-status {
+  display: grid;
+  gap: 4px;
+  padding: 9px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: #ffffff;
+  font-size: 12px;
+}
+
+.command-status.waiting {
+  border-color: #d9c597;
+  background: #fff9eb;
+}
+
+.command-status span,
+.command-note {
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+.command-note {
+  margin: 0;
+  font-size: 12px;
 }
 
 .detail-tabs {
@@ -1045,6 +1130,46 @@ summary:focus-visible {
   color: inherit;
 }
 
+.markdown-table-scroll {
+  max-width: 100%;
+  margin: 0 0 9px;
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: #ffffff;
+}
+
+.markdown-body table {
+  width: 100%;
+  min-width: 420px;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.markdown-body th,
+.markdown-body td {
+  padding: 7px 9px;
+  border-bottom: 1px solid var(--line);
+  border-right: 1px solid var(--line);
+  text-align: left;
+  vertical-align: top;
+}
+
+.markdown-body th:last-child,
+.markdown-body td:last-child {
+  border-right: 0;
+}
+
+.markdown-body tr:last-child td {
+  border-bottom: 0;
+}
+
+.markdown-body th {
+  background: #f3f7f5;
+  color: #26364b;
+  font-weight: 780;
+}
+
 .markdown-body a {
   color: var(--accent-strong);
   font-weight: 720;
@@ -1062,6 +1187,8 @@ summary:focus-visible {
 
 .objective-full {
   max-width: 78ch;
+  max-height: min(34vh, 310px);
+  overflow: auto;
   margin: 0;
   padding: 11px 12px;
   border: 1px solid var(--line);
@@ -1408,8 +1535,11 @@ summary:focus-visible {
 
 @media (max-width: 920px) {
   .layout {
+    height: auto;
+    min-height: 0;
     grid-template-columns: 1fr;
     gap: 16px;
+    overflow: visible;
   }
 
   .layout-splitter {
@@ -1417,7 +1547,15 @@ summary:focus-visible {
   }
 
   .panel {
+    height: auto;
     min-height: auto;
+  }
+
+  .goal-form,
+  .loop-list,
+  #detail {
+    max-height: none;
+    overflow: visible;
   }
 
   .command-actions {
